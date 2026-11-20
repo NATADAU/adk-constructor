@@ -35,6 +35,19 @@ try {
     state.items.push({ id:'e2e',url:img,caption:'Первый текст',copies:2,crop:null });
     renderGallery(); renderOutput();
   });
+  await test('Mobile sheet preview has usable height below multirow toolbar', async () => {
+    for (const width of [320,375,414]) {
+      await page.setViewportSize({width,height:740});
+      await page.evaluate(()=>{state.pane='sheet';syncPane();});
+      const geometry=await page.locator('#previewScroll').evaluate(el=>{
+        const r=el.getBoundingClientRect();
+        const parent=el.closest('.preview-panel').getBoundingClientRect();
+        return {height:r.height,parentHeight:parent.height};
+      });
+      assert.ok(geometry.height>=400, JSON.stringify({width,geometry}));
+      assert.ok(geometry.parentHeight>=geometry.height, JSON.stringify({width,geometry}));
+    }
+  });
   await test('Print output contains two cards and captions', async () => {
     assert.equal(await page.locator('#printRoot .sheet-card').count(),2);
     assert.equal(await page.locator('#printRoot .cap').count(),2);
