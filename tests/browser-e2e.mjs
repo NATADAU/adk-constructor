@@ -81,6 +81,12 @@ try {
   });
   await page.locator('#cropCaption').fill('Вторая подпись');
   await page.locator('#cropApply').click();
+  await test('Applying crop opens the sheet and the return button opens images', async () => {
+    assert.equal(await page.locator('#dropZone').getAttribute('data-pane'),'sheet');
+    assert.equal(await page.locator('#backToImages').isVisible(),true);
+    await page.locator('#backToImages').click();
+    assert.equal(await page.locator('#dropZone').getAttribute('data-pane'),'images');
+  });
   await test('Gallery thumbnail reflects applied crop', async () => {
     const galleryImage=page.locator('#gallery .tile-crop-viewport img').first();
     const printedImage=page.locator('#printRoot .pic img').first();
