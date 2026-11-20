@@ -8,7 +8,7 @@
 ```powershell
 node tests/run-tests.mjs
 ```
-Ожидаемый результат: `12/12 checks passed`. В GitHub Actions также запускается `node tests/browser-e2e.mjs` после установки Playwright. Последний успешный прогон: https://github.com/NATADAU/adk-constructor/actions/runs/44816318332 (12 Node-тестов и 12 Chrome-проверок, включая PDF/PNG/ZIP). Тесты проверяют реальную JavaScript-логику из HTML-файла: синтаксис, раскладку, копии, геометрию кадрирования, расчёт меток и наличие элементов печати. Они не воспроизводят Safari или системный диалог печати.
+Ожидаемый результат: `12/12 checks passed`. В GitHub Actions также запускается `node tests/browser-e2e.mjs` после установки Playwright. Последний успешный прогон: https://github.com/NATADAU/adk-constructor/actions/runs/44816488731 (12 Node-тестов и 13 Chrome-проверок, включая PDF/PNG/ZIP). Тесты проверяют реальную JavaScript-логику из HTML-файла: синтаксис, раскладку, копии, геометрию кадрирования, расчёт меток и наличие элементов печати. Они не воспроизводят Safari или системный диалог печати.
 
 ## Браузерная интеграционная проверка
 
