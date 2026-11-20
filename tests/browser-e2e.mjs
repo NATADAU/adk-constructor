@@ -116,6 +116,26 @@ try {
     assert.deepEqual(result.zipMagic,[80,75,3,4]);
     assert.equal(result.pdfPages,2);
   });
+  await test('Native share receives a PDF file when supported', async () => {
+    const shared=await page.evaluate(async()=>{
+      const originalCanShare=navigator.canShare,originalShare=navigator.share;
+      let received=null;
+      Object.defineProperty(navigator,'canShare',{configurable:true,value:input=>Array.isArray(input.files)});
+      Object.defineProperty(navigator,'share',{configurable:true,value:async input=>{
+        received={fileName:input.files[0].name,type:input.files[0].type,size:input.files[0].size};
+      }});
+      try { await exportAction('share'); return received; }
+      finally {
+        if(originalCanShare)Object.defineProperty(navigator,'canShare',{configurable:true,value:originalCanShare});
+        else delete navigator.canShare;
+        if(originalShare)Object.defineProperty(navigator,'share',{configurable:true,value:originalShare});
+        else delete navigator.share;
+      }
+    });
+    assert.equal(shared?.type,'application/pdf');
+    assert.equal(shared?.fileName,'ADK-kartochki.pdf');
+    assert.ok(shared.size>1000);
+  });
   await test('Browser can generate a print CSS PDF', async () => {
     const pdf=await page.pdf({printBackground:true,preferCSSPageSize:true});
     assert.ok(pdf.length>2500);
