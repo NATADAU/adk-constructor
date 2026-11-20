@@ -16,3 +16,7 @@ jobs:
           node-version: '22'
       - name: Run regression tests
         run: node tests/run-tests.mjs
+      - name: Install browser automation dependency
+        run: npm install --no-save --no-package-lock playwright@1.56.1
+      - name: Run Chrome mobile and print checks
+        run: node tests/browser-e2e.mjs
