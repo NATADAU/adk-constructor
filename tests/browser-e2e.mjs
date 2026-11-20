@@ -73,6 +73,49 @@ try {
     const length=await page.locator('#printRoot .cut-guide').first().evaluate(el=>parseFloat(el.style.getPropertyValue('--mark-size')));
     assert.ok(length<1, String(length));
   });
+  await test('Actual PDF export has correct A4 page size and page count', async () => {
+    const result=await page.evaluate(async()=>{
+      const file=await buildPdfFile();
+      const raw=await file.arrayBuffer();
+      const bytes=new Uint8Array(raw);
+      const text=new TextDecoder('latin1').decode(bytes);
+      return {type:file.type,name:file.name,signature:text.slice(0,8),
+        pageCount:(text.match(/\/Type \/Page \/Parent/g)||[]).length,
+        box:text.match(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/)?.slice(1),
+        size:bytes.length,end:text.trim().endsWith('%%EOF')};
+    });
+    assert.equal(result.type,'application/pdf');
+    assert.ok(result.signature.startsWith('%PDF-1.4'));
+    assert.equal(result.pageCount,1);
+    assert.ok(Math.abs(Number(result.box[0])-595.2756)<.1,JSON.stringify(result));
+    assert.ok(Math.abs(Number(result.box[1])-841.8898)<.1,JSON.stringify(result));
+    assert.ok(result.end && result.size>2000,JSON.stringify(result));
+  });
+  await test('PNG export builds valid image', async () => {
+    const result=await page.evaluate(async()=>{
+      const file=await buildPngFile(), b=new Uint8Array(await file.arrayBuffer());
+      return {type:file.type,name:file.name,start:[...b.slice(0,8)],size:b.length};
+    });
+    assert.equal(result.type,'image/png');
+    assert.deepEqual(result.start,[137,80,78,71,13,10,26,10]);
+    assert.ok(result.size>1000);
+  });
+  await test('Multipage PNG export produces ZIP and PDF retains all pages', async () => {
+    const result=await page.evaluate(async()=>{
+      const previous=state.items[0].copies;
+      state.items[0].copies=30;
+      try {
+        const png=await buildPngFile(), pdf=await buildPdfFile();
+        const z=new Uint8Array(await png.arrayBuffer());
+        const text=new TextDecoder('latin1').decode(await pdf.arrayBuffer());
+        return {type:png.type,name:png.name,zipMagic:[...z.slice(0,4)],
+          pdfPages:(text.match(/\/Type \/Page \/Parent/g)||[]).length};
+      } finally { state.items[0].copies=previous; }
+    });
+    assert.equal(result.type,'application/zip');
+    assert.deepEqual(result.zipMagic,[80,75,3,4]);
+    assert.equal(result.pdfPages,2);
+  });
   await test('Browser can generate a print CSS PDF', async () => {
     const pdf=await page.pdf({printBackground:true,preferCSSPageSize:true});
     assert.ok(pdf.length>2500);
