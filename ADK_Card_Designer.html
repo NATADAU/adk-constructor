@@ -488,8 +488,17 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   .app[data-pane="sheet"] .pane-sheet { display: flex; }
   .app[data-pane="settings"] .pane-settings { display: block; }
   .app[data-pane="images"] .pane-images { display: block; }
+  /* The toolbar may wrap onto several rows on phones.
+     Do not constrain the entire panel to viewport height: otherwise
+     the flex preview shrinks to a narrow strip. */
   .preview-panel {
-    height: calc(100dvh - 170px);
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  .preview-scroll {
+    flex: 0 0 auto;
+    height: clamp(420px, 65dvh, 760px);
     min-height: 420px;
   }
   .settings-grid { grid-template-columns: 1fr 1fr; }
