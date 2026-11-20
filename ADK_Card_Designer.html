@@ -294,12 +294,9 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   min-width: 0;
   background: var(--clp-surface);
 }
-.tile-pic { position: relative; height: 110px; border-radius: 9px; background: var(--clp-bg); }
-.tile-pic img {
-  position: absolute; inset: 6px;
-  width: calc(100% - 12px); height: calc(100% - 12px);
-  object-fit: contain; object-position: center;
-}
+.tile-pic { position: relative; height: 160px; border-radius: 9px; background: var(--clp-bg); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.tile-crop-viewport { position: relative; width: min(100%, calc(160px * var(--crop-ratio))); aspect-ratio: var(--crop-ratio); max-height: 100%; background: #fff; overflow: hidden; }
+.tile-crop-viewport img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: center; }
 .tile-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .tile-row .copies { flex-wrap: wrap; min-width: 0; }
 .tile-label .control { width: 100%; font-size: 16px; }
@@ -1119,11 +1116,20 @@ function tileElement(item) {
   tile.dataset.id = item.id;
   const frame = document.createElement('div');
   frame.className = 'tile-pic';
+  // Show the applied crop in the gallery too, using the same image viewport
+  // and transform as on the printed card. The source file stays unchanged.
+  const plan = layoutPlan();
+  const viewport = cropViewport(plan, captionShown(item));
+  const cropPreview = document.createElement('div');
+  cropPreview.className = 'tile-crop-viewport';
+  cropPreview.style.setProperty('--crop-ratio', String(viewport.w / viewport.h));
   const img = document.createElement('img');
   img.alt = '';
   img.draggable = false;
   img.src = item.url;
-  frame.append(img);
+  if (item.crop) img.style.transform = 'translate(' + item.crop.x + '%, ' + item.crop.y + '%) scale(' + item.crop.zoom + ')';
+  cropPreview.append(img);
+  frame.append(cropPreview);
   const label = document.createElement('label');
   label.className = 'tile-label';
   label.append('Подпись');
