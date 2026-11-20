@@ -349,6 +349,9 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   flex-shrink: 0;
 }
 .warn[hidden] { display: none; }
+.sheet-back { margin: 0 0 8px; }
+.sheet-back .btn { min-height: 40px; }
+@media (min-width: 1025px) { .sheet-back { display: none; } }
 .preview-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -674,6 +677,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
     <section class="panel preview-panel pane pane-sheet" id="printPanel">
       <p id="summary" class="summary" aria-live="polite">Добавьте изображения</p>
       <p id="warn" class="warn" hidden></p>
+      <div class="sheet-back"><button type="button" class="btn secondary" id="backToImages">← К изображениям</button></div>
       <div class="preview-toolbar">
         <div class="zoom-group" role="group" aria-label="Масштаб предпросмотра">
           <div class="zoom-seg">
@@ -1311,6 +1315,8 @@ $('cropApply').addEventListener('click', () => {
   closeCrop();
   renderGallery();
   renderOutput();
+  state.pane = 'sheet';
+  syncPane();
 });
 $('cropZoom').addEventListener('input', e => { cropDraft.zoom = Number(e.target.value); drawCrop(); });
 $('cropCaption').addEventListener('input', () => { sizeCropStage(); drawCrop(); });
@@ -1911,6 +1917,7 @@ $('reset').addEventListener('click', () => {
   if (!ok) return;
   resetAll();
 });
+$('backToImages').addEventListener('click', () => { state.pane = 'images'; syncPane(); });
 $('print').addEventListener('click', () => runPrint());
 $('savePdf').addEventListener('click', () => exportAction('pdf'));
 $('sharePdf').addEventListener('click', () => exportAction('share'));
