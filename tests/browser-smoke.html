@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADK v2 — проверки интерфейса</title>
+<style>
+body{font:16px system-ui;max-width:850px;margin:auto;padding:16px;color:#234}
+.pass{color:#087a55}.fail{color:#b02c45}
+iframe{display:block;width:100%;height:620px;border:2px solid #019bab;border-radius:10px}
+</style>
+<h1>Проверки интерфейса ADK v2</h1>
+<p>Открывать вместе с приложением из одной папки/локального веб-сервера. Эти проверки не заменяют тестирование жестов пальцем и печати.</p>
+<div id="results">Загрузка…</div>
+<iframe src="../ADK_Card_Designer.html" title="Тестовый конструктор" id="app"></iframe>
+<script>
+const frame=document.getElementById('app'), out=document.getElementById('results');
+frame.addEventListener('load', () => {
+  const w=frame.contentWindow, doc=frame.contentDocument, checks=[];
+  function check(name, f) {
+    try{if(!f())throw Error('Условие не выполнено'); checks.push(['pass',name]);}
+    catch(e){checks.push(['fail',name+': '+e.message]);}
+  }
+  const call = src => w.eval(src);
+  check('HTML и CSS загружаются',()=>!!doc.querySelector('#gallery') && !!doc.querySelector('#cropDialog'));
+  check('Печатная область присутствует',()=>!!doc.querySelector('#printRoot'));
+  const img='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0c8AAAAASUVORK5CYII=';
+  call('state.items.push({id:"qa1",url:'+JSON.stringify(img)+',caption:"Пример АДК",copies:3,crop:{zoom:1.5,x:0,y:0}});renderGallery();renderOutput();');
+  check('Три копии в печатной области',()=>doc.querySelectorAll('#printRoot .sheet-card').length===3);
+  check('Подпись есть в каждой карточке',()=>[...doc.querySelectorAll('#printRoot .cap')].length===3);
+  check('Кадрирование применено к печатной картинке',()=>!!doc.querySelector('#printRoot .pic img[style*="scale(1.5)"]'));
+  call('state.cutLines=true;renderOutput()');
+  check('Угловые метки созданы',()=>doc.querySelectorAll('#printRoot .cut-corner').length===12);
+  const marks=[...doc.querySelectorAll('#printRoot .cut-guide')];
+  check('Размер метки меньше половины промежутка',()=>marks.every(m=>parseFloat(m.style.getPropertyValue('--mark-size')) < 1.5));
+  const report=checks.map(([status,name])=>'<li class="'+status+'">'+(status==='pass'?'✓ ':'✗ ')+name+'</li>').join('');
+  out.innerHTML='<strong>'+checks.filter(c=>c[0]==='pass').length+' / '+checks.length+' проверок</strong><ul>'+report+'</ul>';
+});
+</script></html>
