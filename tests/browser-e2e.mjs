@@ -17,7 +17,14 @@ try {
   await test('Mobile layout fits 320, 375 and 414px', async () => {
     for (const width of [320,375,414]) {
       await page.setViewportSize({width,height:812});
-      const d=await page.evaluate(()=>({screen:innerWidth,doc:document.documentElement.scrollWidth,app:document.querySelector('.app').scrollWidth}));
+      const d=await page.evaluate(()=>{
+        const app=document.querySelector('.app');
+        const offenders=[...document.querySelectorAll('.app *')].filter(el=>{
+          const r=el.getBoundingClientRect();
+          return r.width>0 && r.right>innerWidth+1 && getComputedStyle(el).display!=='none';
+        }).slice(0,10).map(el=>({tag:el.tagName,id:el.id,cls:String(el.className).slice(0,50),right:Math.round(el.getBoundingClientRect().right)}));
+        return {screen:innerWidth,doc:document.documentElement.scrollWidth,app:app.scrollWidth,offenders};
+      });
       assert.ok(d.doc <= d.screen+1,JSON.stringify(d));
       assert.ok(d.app <= d.screen+1,JSON.stringify(d));
     }
