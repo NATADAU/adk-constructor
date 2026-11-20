@@ -14,10 +14,14 @@ async function test(name, fn) {
 try {
   const page = await browser.newPage({viewport:{width:375,height:812},deviceScaleFactor:2,hasTouch:true,isMobile:true});
   await page.goto(pathToFileURL(resolve('ADK_Card_Designer.html')).href);
-  await test('Mobile initial layout fits 375px', async () => {
-    const d=await page.evaluate(()=>({screen:innerWidth,doc:document.documentElement.scrollWidth,app:document.querySelector('.app').scrollWidth}));
-    assert.ok(d.doc <= d.screen+1,JSON.stringify(d));
-    assert.ok(d.app <= d.screen+1,JSON.stringify(d));
+  await test('Mobile layout fits 320, 375 and 414px', async () => {
+    for (const width of [320,375,414]) {
+      await page.setViewportSize({width,height:812});
+      const d=await page.evaluate(()=>({screen:innerWidth,doc:document.documentElement.scrollWidth,app:document.querySelector('.app').scrollWidth}));
+      assert.ok(d.doc <= d.screen+1,JSON.stringify(d));
+      assert.ok(d.app <= d.screen+1,JSON.stringify(d));
+    }
+    await page.setViewportSize({width:375,height:812});
   });
   await page.evaluate(() => {
     const img='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0c8AAAAASUVORK5CYII=';
@@ -38,6 +42,17 @@ try {
   await page.locator('#cropZoom').evaluate(el => { el.value='2'; el.dispatchEvent(new Event('input',{bubbles:true})); });
   await test('Cropping supports zooming', async () => {
     assert.match(await page.locator('#cropImage').getAttribute('style'),/scale\(2\)/);
+  });
+  await test('Simulated finger drag changes cropped image position', async () => {
+    const rect=await page.locator('#cropStage').boundingBox();
+    const x=rect.x+rect.width/2,y=rect.y+rect.height/2;
+    const cdp=await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+24,y:y+18}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await cdp.detach();
+    const transform=await page.locator('#cropImage').evaluate(el=>el.style.transform);
+    assert.ok(!transform.includes('translate(0%, 0%)'),transform);
   });
   await page.locator('#cropCaption').fill('Вторая подпись');
   await page.locator('#cropApply').click();
