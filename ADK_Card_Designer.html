@@ -307,7 +307,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   background: var(--clp-teal-soft); color: var(--clp-teal-dark); font-size: 22px; line-height: 1;
 }
 .copy-input {
-  width: 52px; min-height: var(--touch); text-align: center; border: 1px solid var(--clp-line-strong); border-radius: 10px;
+  width: 62px; font-size: 16px; touch-action: manipulation; min-height: var(--touch); text-align: center; border: 1px solid var(--clp-line-strong); border-radius: 10px;
   -moz-appearance: textfield; appearance: textfield;
 }
 .copy-input::-webkit-outer-spin-button, .copy-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -414,17 +414,13 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   z-index: 1;
 }
 .sheet-view .sheet-card.ghost-edge { outline: 1px dashed #B9CDD1; outline-offset: -1px; }
-.cut-guide {
-  position: absolute;
-  box-sizing: border-box;
-  pointer-events: none;
-  background: transparent;
-  border: 0.25mm solid #555;
-  z-index: 3;
-  print-color-adjust: exact;
-  -webkit-print-color-adjust: exact;
-}
-.cut-guide.dashed { border-style: dashed; }
+.cut-guide { position: absolute; pointer-events: none; z-index: 3; overflow: visible; }
+.cut-corner { position: absolute; width: 3mm; height: 3mm; box-sizing: border-box; border-color: #444; border-style: solid; border-width: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.cut-guide.dashed .cut-corner { border-style: dashed; }
+.cut-corner.tl { left: -3mm; top: -3mm; border-right-width: .25mm; border-bottom-width: .25mm; }
+.cut-corner.tr { right: -3mm; top: -3mm; border-left-width: .25mm; border-bottom-width: .25mm; }
+.cut-corner.bl { left: -3mm; bottom: -3mm; border-right-width: .25mm; border-top-width: .25mm; }
+.cut-corner.br { right: -3mm; bottom: -3mm; border-left-width: .25mm; border-top-width: .25mm; }
 .pic { position: relative; flex: 1 1 auto; min-height: 0; }
 .pic img {
   position: absolute;
@@ -508,12 +504,20 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   }
   .print-root .sheet:last-child { break-after: auto; page-break-after: auto; }
   .sheet-card.ghost-edge { outline: none !important; }
-  .cut-guide {
-    border-color: #444 !important;
-    print-color-adjust: exact !important;
-    -webkit-print-color-adjust: exact !important;
-  }
+  .cut-corner { border-color: #444 !important; }
 }
+.crop-dialog[hidden] { display: none; }
+.crop-dialog { position: fixed; inset: 0; background: rgba(20,35,39,.72); z-index: 999; display: grid; place-items: center; padding: 16px; }
+.crop-box { width: min(95vw, 550px); max-height: 92dvh; overflow: auto; background: #fff; color: #233; padding: 18px; border-radius: 16px; display: flex; flex-direction: column; gap: 12px; }
+.crop-box h2 { margin: 0; font-size: 20px; }
+.crop-stage { position: relative; overflow: hidden; background: #f1f6f6; width: min(100%, 380px); max-height: 50dvh; margin: auto; border: 2px solid #019BAB; touch-action: none; user-select: none; cursor: grab; }
+.crop-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; transform-origin: center; }
+.crop-controls { display: flex; align-items: center; gap: 10px; }
+.crop-controls input { flex: 1; min-width: 0; }
+.crop-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.crop-actions button { min-height: 44px; padding: 9px 14px; border-radius: 9px; border: 1px solid #abc; background: #fff; }
+.crop-actions .crop-apply { background: #019BAB; color: #fff; border-color: #019BAB; }
+@media print { .crop-dialog { display: none !important; } }
 </style>
 <style id="pageCss"></style>
 </head>
@@ -778,7 +782,7 @@ function captionShown(item) {
   return state.showLabels && !!item.caption.trim();
 }
 function structureKey(plan) {
-  const ids = state.items.map(item => item.id + 'x' + normalizeCopies(item.copies)).join(',');
+  const ids = state.items.map(item => item.id + 'x' + normalizeCopies(item.copies) + (item.crop ? ':crop' + [item.crop.zoom, item.crop.x, item.crop.y].join(',') : '')).join(',');
   const caps = state.items.map(item => captionShown(item) ? '1' : '0').join('');
   return [
     state.mode, plan.page.w, plan.page.h, plan.card.w, plan.card.h, plan.margin, plan.gap,
@@ -872,6 +876,7 @@ function buildCard(item, plan, x, y) {
   img.alt = item.caption.trim() || 'Изображение без подписи';
   img.src = item.url;
   pic.append(img);
+  if (item.crop) { img.style.transform = 'translate(' + item.crop.x + '%, ' + item.crop.y + '%) scale(' + item.crop.zoom + ')'; }
   card.append(pic);
   if (captionShown(item)) {
     const text = item.caption.trim();
@@ -892,6 +897,7 @@ function buildCutGuide(plan, x, y) {
   guide.style.width = plan.card.w + 'mm';
   guide.style.height = plan.card.h + 'mm';
   guide.setAttribute('aria-hidden', 'true');
+  ['tl', 'tr', 'bl', 'br'].forEach(pos => { const mark = document.createElement('span'); mark.className = 'cut-corner ' + pos; guide.append(mark); });
   return guide;
 }
 function buildSheet(pageItems, plan) {
@@ -1103,7 +1109,10 @@ function tileElement(item) {
   dec.setAttribute('aria-label', 'Меньше копий');
   const num = document.createElement('input');
   num.className = 'copy-input';
-  num.type = 'number';
+  num.type = 'text';
+  num.inputMode = 'numeric';
+  num.pattern = '[0-9]*';
+  num.autocomplete = 'off';
   num.min = '1';
   num.max = '30';
   num.value = String(item.copies);
@@ -1119,9 +1128,58 @@ function tileElement(item) {
   remove.className = 'text-btn remove';
   remove.textContent = 'Убрать';
   row.append(copies, remove);
-  tile.append(frame, label, row);
+  const cropBtn = document.createElement('button');
+  cropBtn.type = 'button'; cropBtn.className = 'text-btn crop-btn'; cropBtn.textContent = 'Кадрировать';
+  tile.append(frame, label, row, cropBtn);
   return tile;
 }
+let cropItem = null;
+let cropDraft = { zoom: 1, x: 0, y: 0 };
+function drawCrop() {
+  $('cropImage').style.transform = 'translate(' + cropDraft.x + '%, ' + cropDraft.y + '%) scale(' + cropDraft.zoom + ')';
+  $('cropZoom').value = String(cropDraft.zoom);
+  $('cropZoomValue').textContent = Math.round(cropDraft.zoom * 100) + '%';
+}
+function openCrop(item) {
+  cropItem = item;
+  cropDraft = { ...(item.crop || { zoom: 1, x: 0, y: 0 }) };
+  const plan = layoutPlan();
+  const capH = captionShown(item) ? Math.max(6, Math.min(12, plan.card.h * 0.2)) : 0;
+  $('cropStage').style.aspectRatio = plan.card.w + ' / ' + Math.max(1, plan.card.h - capH);
+  $('cropImage').src = item.url;
+  $('cropDialog').hidden = false;
+  document.body.style.overflow = 'hidden';
+  drawCrop();
+}
+function closeCrop() {
+  $('cropDialog').hidden = true;
+  document.body.style.overflow = '';
+  cropItem = null;
+}
+$('cropCancel').addEventListener('click', closeCrop);
+$('cropDialog').addEventListener('click', e => { if (e.target === $('cropDialog')) closeCrop(); });
+$('cropReset').addEventListener('click', () => { cropDraft = { zoom: 1, x: 0, y: 0 }; drawCrop(); });
+$('cropApply').addEventListener('click', () => {
+  if (cropItem) cropItem.crop = { ...cropDraft };
+  closeCrop();
+  renderOutput();
+});
+$('cropZoom').addEventListener('input', e => { cropDraft.zoom = Number(e.target.value); drawCrop(); });
+let cropDrag = null;
+$('cropStage').addEventListener('pointerdown', e => {
+  e.preventDefault(); cropDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, a: cropDraft.x, b: cropDraft.y };
+  $('cropStage').setPointerCapture(e.pointerId);
+});
+$('cropStage').addEventListener('pointermove', e => {
+  if (!cropDrag || e.pointerId !== cropDrag.id) return;
+  const rect = $('cropStage').getBoundingClientRect();
+  cropDraft.x = Math.max(-200, Math.min(200, cropDrag.a + (e.clientX - cropDrag.x) / rect.width * 100));
+  cropDraft.y = Math.max(-200, Math.min(200, cropDrag.b + (e.clientY - cropDrag.y) / rect.height * 100));
+  drawCrop();
+});
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(name =>
+  $('cropStage').addEventListener(name, () => { cropDrag = null; }));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('cropDialog').hidden) closeCrop(); });
 function findItem(id) {
   return state.items.find(item => item.id === id);
 }
@@ -1355,6 +1413,7 @@ $('gallery').addEventListener('click', event => {
     renderOutput();
     return;
   }
+  if (event.target.closest('.crop-btn')) { openCrop(item); return; }
   if (event.target.closest('.dec') || event.target.closest('.inc')) {
     item.copies = normalizeCopies(item.copies + (event.target.closest('.inc') ? 1 : -1));
     tile.querySelector('.copy-input').value = String(item.copies);
@@ -1371,9 +1430,9 @@ $('gallery').addEventListener('input', event => {
     renderOutput();
   } else if (event.target.classList.contains('copy-input')) {
     if (!event.target.value.trim()) return;
+    if (!/^\d+$/.test(event.target.value)) return;
     const n = normalizeCopies(event.target.value);
     item.copies = n;
-    if (Number(event.target.value) > 30) event.target.value = '30';
     renderOutput();
   }
 });
@@ -1416,5 +1475,14 @@ renderGallery();
 renderOutput();
 requestAnimationFrame(() => requestAnimationFrame(applyScale));
 </script>
+<div class="crop-dialog" id="cropDialog" hidden role="dialog" aria-modal="true" aria-labelledby="cropTitle">
+ <div class="crop-box">
+  <h2 id="cropTitle">Кадрирование изображения</h2>
+  <div id="cropStage" class="crop-stage"><img id="cropImage" alt="Изображение для кадрирования"></div>
+  <label class="crop-controls">Масштаб <input id="cropZoom" type="range" min="1" max="3" step="0.05" value="1"><span id="cropZoomValue">100%</span></label>
+  <p style="margin:0;font-size:13px">Передвигайте изображение пальцем или мышью. Исходный файл сохранится.</p>
+  <div class="crop-actions"><button type="button" id="cropReset">Сбросить</button><button type="button" id="cropCancel">Отмена</button><button type="button" id="cropApply" class="crop-apply">Применить</button></div>
+ </div>
+</div>
 </body>
 </html>
