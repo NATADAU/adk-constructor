@@ -1064,7 +1064,7 @@ function itemWord(n) {
 function setPrintEnabled(on) {
   $('print').disabled = !on;
   $('savePdf').disabled = !on;
-  $('sharePdf').disabled = !on;
+  $('sharePdf').disabled = !on || !sharePdfCache || exportBusy;
   $('savePng').disabled = !on;
 }
 function syncPrimaryActions() {
@@ -1075,6 +1075,7 @@ function syncPrimaryActions() {
   $('savePdf').classList.toggle('secondary', !has || $('savePdf').disabled);
 }
 function renderOutput() {
+  queueSharePdf();
   syncSheetQuantity();
   const plan = layoutPlan();
   const key = structureKey(plan);
@@ -1742,15 +1743,47 @@ function downloadExportFile(file) {
   document.body.append(link);link.click();link.remove();
   setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
+// iOS requires navigator.share() to run while the original tap is still active.
+// Prepare the PDF between edits; the tap handler must not await image decoding.
 let exportBusy=false;
+let sharePdfCache=null;
+let sharePdfRevision=0;
+let sharePdfTimer=0;
+function queueSharePdf() {
+  const revision=++sharePdfRevision;
+  sharePdfCache=null;
+  clearTimeout(sharePdfTimer);
+  const enabled=state.items.length>0 && !layoutPlan().error && slots().length>0;
+  $('sharePdf').disabled=true;
+  $('sharePdf').textContent=enabled?'Готовим PDF…':'Поделиться';
+  if(!enabled) return;
+  sharePdfTimer=setTimeout(async()=>{
+    try {
+      const file=await buildPdfFile();
+      if(revision!==sharePdfRevision)return;
+      sharePdfCache=file;
+      $('sharePdf').textContent='Поделиться';
+      $('sharePdf').disabled=exportBusy;
+    } catch(error) {
+      if(revision!==sharePdfRevision)return;
+      $('sharePdf').textContent='Поделиться';
+      $('sharePdf').disabled=true;
+      $('status').textContent='Не удалось подготовить PDF для отправки: '+(error?.message||'ошибка');
+    }
+  },300);
+}
 async function exportAction(mode) {
   if(exportBusy || !state.items.length) return;
+  if(mode==='share' && !sharePdfCache) {
+    $('status').textContent='PDF ещё подготавливается. Нажмите «Поделиться», когда кнопка станет доступной.';
+    return;
+  }
   exportBusy=true;
   const controls=['savePdf','sharePdf','savePng'];
   controls.forEach(id=>{$(id).disabled=true;$(id).classList.add('export-busy');});
   $('status').textContent='Подготавливаю файл…';
   try {
-    const file=mode==='png'?await buildPngFile():await buildPdfFile();
+    const file=mode==='share'?sharePdfCache:(mode==='png'?await buildPngFile():await buildPdfFile());
     if(mode==='share'){
       if(navigator.canShare && navigator.canShare({files:[file]}) && navigator.share){
         try {
@@ -1758,11 +1791,10 @@ async function exportAction(mode) {
           $('status').textContent='Открыто меню отправки файла.';
         } catch(error) {
           if(error.name==='AbortError'){ $('status').textContent='Отправка отменена.'; }
-          else {downloadExportFile(file);$('status').textContent='Меню отправки недоступно — PDF скачан. Его можно отправить из приложения «Файлы».';}
+          else { $('status').textContent='Не получилось открыть отправку PDF ('+(error?.name||'ошибка')+'). Нажмите «Скачать PDF» и отправьте файл из «Файлов».'; }
         }
       } else {
-        downloadExportFile(file);
-        $('status').textContent='В этом браузере нет отправки файлов. PDF скачан — отправьте его из «Файлов».';
+        $('status').textContent='Этот браузер не поддерживает отправку PDF. Нажмите «Скачать PDF» и отправьте файл из «Файлов».';
       }
     } else {
       downloadExportFile(file);
@@ -1774,8 +1806,8 @@ async function exportAction(mode) {
   } finally {
     exportBusy=false;
     controls.forEach(id=>{$(id).classList.remove('export-busy');});
-    syncPrimaryActions();
     setPrintEnabled(!layoutPlan().error && slots().length>0);
+    syncPrimaryActions();
   }
 }
 
