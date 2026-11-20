@@ -53,6 +53,25 @@ try {
     assert.equal(await page.locator('#printRoot .cap').count(),2);
     assert.equal(await page.locator('#printRoot .cap').first().textContent(),'Первый текст');
   });
+  await test('Sheet actions are compact and additional actions open from menu', async () => {
+    assert.equal(await page.locator('#savePdf').isVisible(),true);
+    assert.equal(await page.locator('#sharePdf').isVisible(),true);
+    assert.equal(await page.locator('#print').isVisible(),false);
+    assert.equal(await page.locator('#savePng').isVisible(),false);
+    const order=await page.evaluate(()=>{
+      const quantity=document.querySelector('#sheetQuantity').getBoundingClientRect();
+      const controls=document.querySelector('.preview-toolbar').getBoundingClientRect();
+      const preview=document.querySelector('#previewScroll').getBoundingClientRect();
+      return {quantityEnd:quantity.bottom,controlsTop:controls.top,controlsEnd:controls.bottom,previewTop:preview.top};
+    });
+    assert.ok(order.quantityEnd<=order.controlsTop+2,JSON.stringify(order));
+    assert.ok(order.controlsEnd<=order.previewTop+2,JSON.stringify(order));
+    await page.locator('#moreActions summary').click();
+    assert.equal(await page.locator('#print').isVisible(),true);
+    assert.equal(await page.locator('#savePng').isVisible(),true);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#print').isVisible(),false);
+  });
   await test('Sheet copy controls update the print sheet immediately', async () => {
     assert.equal(await page.locator('#sheetQuantity').isVisible(),true);
     assert.equal(await page.locator('#sheetCopyInput').inputValue(),'2');
