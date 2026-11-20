@@ -35,15 +35,15 @@ try {
     assert.equal(await page.locator('#cropDialog').isVisible(),true);
     const size=await page.locator('#cropZoom').boundingBox();assert.ok(size?.height>=35);
   });
-  await page.locator('#cropZoom').fill('2');
+  await page.locator('#cropZoom').evaluate(el => { el.value='2'; el.dispatchEvent(new Event('input',{bubbles:true})); });
   await test('Cropping supports zooming', async () => {
-    assert.match(await page.locator('#cropImage').getAttribute('style'),/scale\\(2\\)/);
+    assert.match(await page.locator('#cropImage').getAttribute('style'),/scale\(2\)/);
   });
   await page.locator('#cropCaption').fill('Вторая подпись');
   await page.locator('#cropApply').click();
   await test('Updated caption survives cropping', async () => {
     assert.equal(await page.locator('#printRoot .cap').first().textContent(),'Вторая подпись');
-    assert.match(await page.locator('#printRoot .pic img').first().getAttribute('style'),/scale\\(2\\)/);
+    assert.match(await page.locator('#printRoot .pic img').first().getAttribute('style'),/scale\(2\)/);
   });
   await test('Cut marks present and nonoverlapping', async () => {
     await page.evaluate(()=>{ state.cutLines=true; state.gap=2; renderOutput(); });
