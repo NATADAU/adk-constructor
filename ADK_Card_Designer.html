@@ -540,6 +540,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .crop-actions button { min-height: 44px; padding: 9px 14px; border-radius: 9px; border: 1px solid #abc; background: #fff; }
 .crop-actions .crop-apply { background: #019BAB; color: #fff; border-color: #019BAB; }
 @media print { .crop-dialog { display: none !important; } }
+.export-busy { opacity: .7; cursor: progress !important; }
 </style>
 <style id="pageCss"></style>
 </head>
@@ -675,6 +676,8 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
         <div class="print-actions">
           <button type="button" class="btn secondary" id="print" disabled>Напечатать</button>
           <button type="button" class="btn secondary" id="savePdf" disabled>Скачать PDF</button>
+          <button type="button" class="btn secondary" id="sharePdf" disabled>Поделиться</button>
+          <button type="button" class="btn secondary" id="savePng" disabled>Скачать PNG</button>
         </div>
       </div>
       <div class="preview-scroll fit-mode" id="previewScroll">
@@ -1012,6 +1015,8 @@ function itemWord(n) {
 function setPrintEnabled(on) {
   $('print').disabled = !on;
   $('savePdf').disabled = !on;
+  $('sharePdf').disabled = !on;
+  $('savePng').disabled = !on;
 }
 function syncPrimaryActions() {
   const has = state.items.length > 0;
@@ -1365,14 +1370,305 @@ function imageFilesFromClipboard(data) {
   if (found.length) return found;
   return [...(data.files || [])].filter(file => !file.type || file.type.startsWith('image/'));
 }
-async function runPrint(asPdf) {
+async function runPrint() {
   if ($('print').disabled) return;
-  if (asPdf) {
-    $('status').textContent = 'В окне печати выберите «Сохранить как PDF» или «Microsoft Print to PDF», масштаб 100%.';
-  }
   const imgs = [...$('printRoot').querySelectorAll('img')];
   await Promise.all(imgs.map(img => img.decode ? img.decode().catch(() => {}) : Promise.resolve()));
   window.print();
+}
+
+
+// Export uses the same millimetre layout and crop values as the print preview.
+// Page rasterization happens locally: uploaded pictures never leave the browser.
+const EXPORT_DPI = 180;
+function exportPixels(mm, dpi = EXPORT_DPI) { return mm / 25.4 * dpi; }
+function exportStyle(ctx, mm, dpi) { ctx.lineWidth = exportPixels(mm, dpi); }
+function trimToWidth(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let low = 0, high = text.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (ctx.measureText(text.slice(0, mid) + '…').width <= maxWidth) low = mid;
+    else high = mid - 1;
+  }
+  return text.slice(0, low) + '…';
+}
+function wrapExportCaption(ctx, text, width, maxLines) {
+  const words = text.trim().split(/\s+/);
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    const joined = current ? current + ' ' + word : word;
+    if (ctx.measureText(joined).width <= width || !current) current = joined;
+    else { lines.push(current); current = word; }
+  }
+  if (current) lines.push(current);
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    lines[maxLines - 1] = trimToWidth(ctx, lines[maxLines - 1] + '…', width);
+  }
+  return lines.map(line => trimToWidth(ctx, line, width));
+}
+function drawExportCaption(ctx, item, plan, x, y, dpi) {
+  if (!captionShown(item)) return;
+  const capH = Math.max(6, Math.min(12, plan.card.h * .2));
+  const large = plan.card.h >= 70;
+  const fontMm = capH * (large ? .34 : .46);
+  const width = exportPixels(plan.card.w - 2.8, dpi);
+  ctx.fillStyle = '#2A2A2A';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = '700 ' + exportPixels(fontMm, dpi) + 'px Arial, sans-serif';
+  const lineHeight = exportPixels(fontMm * 1.15, dpi);
+  const maxLines = large ? Math.max(1, Math.floor((capH - 1) / (fontMm * 1.15))) : 1;
+  const lines = wrapExportCaption(ctx, item.caption, width, maxLines);
+  const startX = exportPixels(x + plan.card.w / 2, dpi);
+  const startY = exportPixels(y + plan.card.h - capH, dpi);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(exportPixels(x+1.4,dpi),startY,width,exportPixels(capH-1,dpi));
+  ctx.clip();
+  lines.forEach((line,i) => ctx.fillText(line,startX,startY+i*lineHeight));
+  ctx.restore();
+}
+function exportCropArea(plan, item, x, y) {
+  const bw = borderWidth();
+  const capH = captionShown(item) ? Math.max(6, Math.min(12, plan.card.h*.2)) : 0;
+  return {
+    x: x + bw + 1.2, y: y + bw + 1.2,
+    w: Math.max(1, plan.card.w - 2*bw - 2.4),
+    h: Math.max(1, plan.card.h - 2*bw - 2.4 - capH)
+  };
+}
+async function loadExportImage(url) {
+  const img = new Image();
+  img.src = url;
+  if (img.decode) await img.decode();
+  else await new Promise((resolve,reject) => { img.onload = resolve; img.onerror = reject; });
+  if (!img.naturalWidth || !img.naturalHeight) throw Error('Не удалось открыть изображение.');
+  return img;
+}
+async function prepareExportImages(pages) {
+  const unique = new Map();
+  for (const items of pages) for (const item of items) {
+    if (!unique.has(item.url)) unique.set(item.url, loadExportImage(item.url));
+  }
+  const resolved = new Map();
+  for (const [url, pending] of unique) resolved.set(url, await pending);
+  return resolved;
+}
+function drawExportCrop(ctx, item, plan, x, y, image, dpi) {
+  const area = exportCropArea(plan, item, x, y);
+  const sx = exportPixels(area.x,dpi), sy = exportPixels(area.y,dpi);
+  const w = exportPixels(area.w,dpi), h = exportPixels(area.h,dpi);
+  const zoom = item.crop && Number.isFinite(item.crop.zoom) ? item.crop.zoom : 1;
+  const dx = item.crop && Number.isFinite(item.crop.x) ? item.crop.x : 0;
+  const dy = item.crop && Number.isFinite(item.crop.y) ? item.crop.y : 0;
+  const fit = Math.min(w / image.naturalWidth, h / image.naturalHeight);
+  const iw = image.naturalWidth * fit * zoom, ih = image.naturalHeight * fit * zoom;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(sx,sy,w,h); ctx.clip();
+  ctx.drawImage(image, sx+(w-iw)/2+dx/100*w, sy+(h-ih)/2+dy/100*h, iw, ih);
+  ctx.restore();
+}
+function drawExportBorder(ctx, plan, x, y, dpi) {
+  const bw = borderWidth();
+  if (!bw) return;
+  ctx.strokeStyle = safeColor(state.borderColor);
+  exportStyle(ctx,bw,dpi);
+  ctx.strokeRect(exportPixels(x+bw/2,dpi),exportPixels(y+bw/2,dpi),
+    exportPixels(plan.card.w-bw,dpi),exportPixels(plan.card.h-bw,dpi));
+}
+function drawExportCutMarks(ctx, plan, x, y, dpi) {
+  if (!state.cutLines) return;
+  const m = Math.max(.6,Math.min(2,plan.gap/2-.2));
+  const x1=exportPixels(x,dpi),x2=exportPixels(x+plan.card.w,dpi);
+  const y1=exportPixels(y,dpi),y2=exportPixels(y+plan.card.h,dpi);
+  const t=exportPixels(m,dpi);
+  ctx.save();
+  ctx.strokeStyle='#444';
+  ctx.lineWidth=Math.max(1,exportPixels(.25,dpi));
+  ctx.setLineDash(state.cutStyle==='dashed' ? [Math.max(2,exportPixels(.8,dpi)),Math.max(2,exportPixels(.5,dpi))] : []);
+  ctx.beginPath();
+  // Each L-shaped trim mark follows the same geometry as the print CSS.
+  ctx.moveTo(x1,y1-t);ctx.lineTo(x1,y1);ctx.lineTo(x1-t,y1);
+  ctx.moveTo(x2,y1-t);ctx.lineTo(x2,y1);ctx.lineTo(x2+t,y1);
+  ctx.moveTo(x1,y2+t);ctx.lineTo(x1,y2);ctx.lineTo(x1-t,y2);
+  ctx.moveTo(x2,y2+t);ctx.lineTo(x2,y2);ctx.lineTo(x2+t,y2);
+  ctx.stroke();ctx.restore();
+}
+function renderExportPage(items, plan, images, dpi=EXPORT_DPI) {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(exportPixels(plan.page.w,dpi));
+  canvas.height = Math.round(exportPixels(plan.page.h,dpi));
+  const ctx=canvas.getContext('2d',{alpha:false});
+  if (!ctx) throw Error('Браузер не смог создать лист для экспорта.');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+  items.forEach((item,index)=>{
+    const col=index%plan.cols,row=Math.floor(index/plan.cols);
+    const x=plan.margin+col*(plan.card.w+plan.gap);
+    const y=plan.margin+row*(plan.card.h+plan.gap);
+    drawExportCrop(ctx,item,plan,x,y,images.get(item.url),dpi);
+    drawExportCaption(ctx,item,plan,x,y,dpi);
+    drawExportBorder(ctx,plan,x,y,dpi);
+    drawExportCutMarks(ctx,plan,x,y,dpi);
+  });
+  return canvas;
+}
+function canvasAsBlob(canvas,type,quality) {
+  return new Promise((resolve,reject)=>{
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(Error('Не удалось создать файл.')),type,quality);
+  });
+}
+function concatBinary(parts) {
+  const length=parts.reduce((total,part)=>total+part.length,0);
+  const result=new Uint8Array(length);
+  let offset=0;
+  parts.forEach(part=>{result.set(part,offset);offset+=part.length;});
+  return result;
+}
+// A compact self-contained PDF 1.4 writer with JPEG page XObjects.
+// MediaBox is specified in points; it preserves exact physical A4/A3 dimensions.
+function pdfFromJpegs(jpegs,pageWmm,pageHmm) {
+  const encode=text=>new TextEncoder().encode(text);
+  const chunks=[];let length=0;
+  function add(part){const bytes=typeof part==='string'?encode(part):part;chunks.push(bytes);length+=bytes.length;}
+  const offsets=[0], objects=2+jpegs.length*3;
+  add('%PDF-1.4\n');
+  function object(id,parts){
+    offsets[id]=length;add(id+' 0 obj\n');
+    for(const p of parts)add(p);
+    add('\nendobj\n');
+  }
+  object(1,['<< /Type /Catalog /Pages 2 0 R >>']);
+  const pageIds=jpegs.map((_,i)=>3+i*3);
+  object(2,['<< /Type /Pages /Kids [ '+pageIds.map(id=>id+' 0 R').join(' ')+' ] /Count '+jpegs.length+' >>']);
+  jpegs.forEach((page,i)=>{
+    const id=pageIds[i], iw=page.width,ih=page.height;
+    const wp=(pageWmm*72/25.4).toFixed(4),hp=(pageHmm*72/25.4).toFixed(4);
+    object(id,['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+wp+' '+hp+
+      '] /Resources << /XObject << /I'+i+' '+(id+1)+' 0 R >> >> /Contents '+(id+2)+' 0 R >>']);
+    object(id+1,['<< /Type /XObject /Subtype /Image /Width '+iw+' /Height '+ih+
+      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+page.bytes.length+' >>\nstream\n',
+      page.bytes,'\nendstream']);
+    const content='q\n'+wp+' 0 0 '+hp+' 0 0 cm\n/I'+i+' Do\nQ\n';
+    object(id+2,['<< /Length '+encode(content).length+' >>\nstream\n'+content+'endstream']);
+  });
+  const xref=length;
+  add('xref\n0 '+(objects+1)+'\n0000000000 65535 f \n');
+  for(let i=1;i<=objects;i++)add(String(offsets[i]).padStart(10,'0')+' 00000 n \n');
+  add('trailer\n<< /Size '+(objects+1)+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF');
+  return new Blob(chunks,{type:'application/pdf'});
+}
+function bytesFromBase64(base64) {
+  const binary=atob(base64);
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  return bytes;
+}
+async function buildPdfFile() {
+  const plan=layoutPlan();
+  if(plan.error || !state.items.length) throw Error(plan.error || 'Сначала добавьте изображения.');
+  const pages=splitPages(plan), images=await prepareExportImages(pages);
+  const jpegs=[];
+  for(const pageItems of pages) {
+    const canvas=renderExportPage(pageItems,plan,images);
+    const jpeg=bytesFromBase64(canvas.toDataURL('image/jpeg',.9).split(',')[1]);
+    jpegs.push({width:canvas.width,height:canvas.height,bytes:jpeg});
+    canvas.width=0;canvas.height=0;
+  }
+  return new File([pdfFromJpegs(jpegs,plan.page.w,plan.page.h)],
+    'ADK-kartochki.pdf',{type:'application/pdf'});
+}
+function zipCrc32(data) {
+  let crc=-1;
+  for(let i=0;i<data.length;i++){
+    crc ^= data[i];
+    for(let j=0;j<8;j++)crc=(crc>>>1)^((crc&1)?0xEDB88320:0);
+  }
+  return (crc^-1)>>>0;
+}
+function makeZip(files) {
+  const encoder=new TextEncoder(), parts=[], central=[];
+  let offset=0;
+  function number(n,bytes) {
+    const data=new Uint8Array(bytes);
+    for(let j=0;j<bytes;j++)data[j]=(n>>> (j*8))&255;
+    return data;
+  }
+  function append(...data) { for(const p of data) { parts.push(p);offset+=p.length; } }
+  files.forEach(({name,bytes})=>{
+    const filename=encoder.encode(name),crc=zipCrc32(bytes),begin=offset;
+    append(number(0x04034b50,4),number(20,2),number(0,2),number(0,2),
+      number(0,2),number(0,2),number(crc,4),number(bytes.length,4),
+      number(bytes.length,4),number(filename.length,2),number(0,2),filename,bytes);
+    central.push(...[number(0x02014b50,4),number(20,2),number(20,2),
+      number(0,2),number(0,2),number(0,2),number(0,2),number(crc,4),
+      number(bytes.length,4),number(bytes.length,4),number(filename.length,2),
+      number(0,2),number(0,2),number(0,2),number(0,2),number(0,4),
+      number(begin,4),filename]);
+  });
+  const start=offset;append(...central);
+  append(number(0x06054b50,4),number(0,2),number(0,2),number(files.length,2),
+    number(files.length,2),number(offset-start,4),number(start,4),number(0,2));
+  return new Blob(parts,{type:'application/zip'});
+}
+async function buildPngFile() {
+  const plan=layoutPlan();
+  if(plan.error || !state.items.length) throw Error(plan.error || 'Сначала добавьте изображения.');
+  const pages=splitPages(plan),images=await prepareExportImages(pages),files=[];
+  for(let i=0;i<pages.length;i++){
+    const canvas=renderExportPage(pages[i],plan,images);
+    const blob=await canvasAsBlob(canvas,'image/png');
+    files.push({name:'ADK-list-'+String(i+1).padStart(2,'0')+'.png',
+      bytes:new Uint8Array(await blob.arrayBuffer())});
+    canvas.width=0;canvas.height=0;
+  }
+  if(files.length===1)return new File([files[0].bytes],files[0].name,{type:'image/png'});
+  return new File([makeZip(files)],'ADK-listy-PNG.zip',{type:'application/zip'});
+}
+function downloadExportFile(file) {
+  const url=URL.createObjectURL(file);
+  const link=document.createElement('a');
+  link.href=url;link.download=file.name;
+  document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+let exportBusy=false;
+async function exportAction(mode) {
+  if(exportBusy || !state.items.length) return;
+  exportBusy=true;
+  const controls=['savePdf','sharePdf','savePng'];
+  controls.forEach(id=>{$(id).disabled=true;$(id).classList.add('export-busy');});
+  $('status').textContent='Подготавливаю файл…';
+  try {
+    const file=mode==='png'?await buildPngFile():await buildPdfFile();
+    if(mode==='share'){
+      if(navigator.canShare && navigator.canShare({files:[file]}) && navigator.share){
+        try {
+          await navigator.share({files:[file],title:'Карточки АДК'});
+          $('status').textContent='Открыто меню отправки файла.';
+        } catch(error) {
+          if(error.name==='AbortError'){ $('status').textContent='Отправка отменена.'; }
+          else {downloadExportFile(file);$('status').textContent='Меню отправки недоступно — PDF скачан. Его можно отправить из приложения «Файлы».';}
+        }
+      } else {
+        downloadExportFile(file);
+        $('status').textContent='В этом браузере нет отправки файлов. PDF скачан — отправьте его из «Файлов».';
+      }
+    } else {
+      downloadExportFile(file);
+      $('status').textContent=mode==='pdf'?'PDF скачан. Для печати используйте масштаб 100%.':
+        (file.type==='application/zip'?'Листы PNG скачаны одним ZIP-архивом.':'Лист PNG скачан.');
+    }
+  } catch(error) {
+    $('status').textContent='Не удалось создать файл: '+(error && error.message?error.message:'неизвестная ошибка');
+  } finally {
+    exportBusy=false;
+    controls.forEach(id=>{$(id).classList.remove('export-busy');});
+    syncPrimaryActions();
+    setPrintEnabled(!layoutPlan().error && slots().length>0);
+  }
 }
 
 function openBgHelp() {
@@ -1558,8 +1854,10 @@ $('reset').addEventListener('click', () => {
   if (!ok) return;
   resetAll();
 });
-$('print').addEventListener('click', () => runPrint(false));
-$('savePdf').addEventListener('click', () => runPrint(true));
+$('print').addEventListener('click', () => runPrint());
+$('savePdf').addEventListener('click', () => exportAction('pdf'));
+$('sharePdf').addEventListener('click', () => exportAction('share'));
+$('savePng').addEventListener('click', () => exportAction('png'));
 let scaleTimer = 0;
 function onViewportChange() {
   clearTimeout(scaleTimer);
