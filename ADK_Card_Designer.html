@@ -359,6 +359,17 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   flex-shrink: 0;
 }
 .zoom-group, .print-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sheet-quantity { border: 1px solid var(--clp-line); background: #fff; border-radius: 12px; padding: 10px 12px; margin: 0 0 10px; display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.sheet-quantity[hidden] { display: none; }
+.sheet-quantity-picker { display: flex; flex: 1 1 170px; flex-direction: column; gap: 4px; min-width: 0; font-size: 13px; color: var(--clp-muted); font-weight: 600; }
+.sheet-quantity-picker select { width: 100%; max-width: 100%; }
+.sheet-quantity-stepper { display: flex; align-items: center; gap: 7px; flex-wrap: nowrap; }
+.sheet-quantity-stepper .copy-input { width: 56px; }
+.sheet-quantity-status { flex: 1 1 100%; margin: 0; font-size: 13px; color: var(--clp-muted); }
+.tile-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 3px; }
+.tile-actions button { flex: 1 1 140px; min-height: 44px; border: 1px solid var(--clp-line-strong); background: white; border-radius: 10px; padding: 8px 10px; font-size: 14px; font-weight: 600; }
+.tile-actions .crop-btn { color: var(--clp-teal-dark); }
+.tile-actions .remove { color: #ac2454; }
 .zoom-seg {
   display: inline-flex;
   border: 1px solid var(--clp-line);
@@ -676,6 +687,17 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
           <button type="button" class="btn secondary" id="sharePdf" disabled>Поделиться</button>
           <button type="button" class="btn secondary" id="savePng" disabled>Скачать PNG</button>
         </div>
+      </div>
+      <div class="sheet-quantity" id="sheetQuantity" hidden aria-label="Количество копий на листе">
+        <label class="sheet-quantity-picker" for="sheetImageSelect">Изображение
+          <select class="control" id="sheetImageSelect" aria-label="Выбрать изображение для изменения количества"></select>
+        </label>
+        <div class="sheet-quantity-stepper" aria-label="Количество копий выбранного изображения">
+          <button type="button" class="step" id="sheetDec" aria-label="Уменьшить количество копий">−</button>
+          <input id="sheetCopyInput" class="copy-input" type="text" inputmode="numeric" pattern="[0-9]*" aria-label="Количество копий" value="1">
+          <button type="button" class="step" id="sheetInc" aria-label="Увеличить количество копий">+</button>
+        </div>
+        <p class="sheet-quantity-status" id="sheetQuantityStatus" role="status" aria-live="polite"></p>
       </div>
       <div class="preview-scroll fit-mode" id="previewScroll">
         <div id="preview"></div>
@@ -1023,6 +1045,7 @@ function syncPrimaryActions() {
   $('savePdf').classList.toggle('secondary', !has || $('savePdf').disabled);
 }
 function renderOutput() {
+  syncSheetQuantity();
   const plan = layoutPlan();
   const key = structureKey(plan);
   $('pageCss').textContent = '@page{size:' + plan.page.w + 'mm ' + plan.page.h + 'mm;margin:0;}';
@@ -1096,7 +1119,74 @@ function sheetWord(n) {
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'листа';
   return 'листов';
 }
+let selectedSheetItemId = null;
+function selectedSheetItem() {
+  return state.items.find(item => item.id === selectedSheetItemId) || state.items[0] || null;
+}
+function syncSheetQuantity() {
+  const host = $('sheetQuantity');
+  const select = $('sheetImageSelect');
+  const active = selectedSheetItem();
+  host.hidden = !active;
+  if (!active) {
+    selectedSheetItemId = null;
+    select.replaceChildren();
+    $('sheetQuantityStatus').textContent = '';
+    return;
+  }
+  selectedSheetItemId = active.id;
+  const optionIds = [...select.options].map(option => option.value);
+  const nextIds = state.items.map(item => item.id);
+  if (optionIds.length !== nextIds.length || optionIds.some((id,i) => id !== nextIds[i])) {
+    select.replaceChildren(...state.items.map((item, index) => {
+      const opt = document.createElement('option');
+      opt.value = item.id;
+      opt.textContent = (index + 1) + '. ' + (item.caption.trim() || 'Изображение без подписи');
+      return opt;
+    }));
+  } else {
+    state.items.forEach((item,index) => {
+      const text = (index + 1) + '. ' + (item.caption.trim() || 'Изображение без подписи');
+      if (select.options[index].textContent !== text) select.options[index].textContent = text;
+    });
+  }
+  select.value = active.id;
+  const countInput = $('sheetCopyInput');
+  if (document.activeElement !== countInput) countInput.value = String(active.copies);
+  $('sheetQuantityStatus').textContent = 'На листе: ' + normalizeCopies(active.copies) + ' шт. Выбор применяется сразу.';
+  $('sheetDec').disabled = active.copies <= 1;
+  $('sheetInc').disabled = active.copies >= 30;
+}
+function updateSheetCopies(value) {
+  const item = selectedSheetItem();
+  if (!item) return;
+  item.copies = normalizeCopies(value);
+  $('sheetCopyInput').value = String(item.copies);
+  renderOutput();
+}
+$('sheetImageSelect').addEventListener('change', event => {
+  selectedSheetItemId = event.target.value;
+  syncSheetQuantity();
+});
+$('sheetDec').addEventListener('click', () => {
+  const item=selectedSheetItem(); if (item) updateSheetCopies(item.copies - 1);
+});
+$('sheetInc').addEventListener('click', () => {
+  const item=selectedSheetItem(); if (item) updateSheetCopies(item.copies + 1);
+});
+$('sheetCopyInput').addEventListener('input', event => {
+  const value = event.target.value.trim();
+  if (!/^\d+$/.test(value)) return;
+  const item = selectedSheetItem();
+  if (!item) return;
+  item.copies = normalizeCopies(value);
+  renderOutput();
+});
+$('sheetCopyInput').addEventListener('blur', () => {
+  const item = selectedSheetItem(); if (item) updateSheetCopies($('sheetCopyInput').value);
+});
 function renderGallery() {
+  syncSheetQuantity();
   const gallery = $('gallery');
   gallery.replaceChildren();
   $('countLabel').textContent = String(state.items.length);
@@ -1140,41 +1230,20 @@ function tileElement(item) {
   input.placeholder = 'Необязательно';
   input.value = item.caption;
   label.append(input);
-  const row = document.createElement('div');
-  row.className = 'tile-row';
-  const copies = document.createElement('div');
-  copies.className = 'copies';
-  const word = document.createElement('span');
-  word.textContent = 'Копий';
-  const dec = document.createElement('button');
-  dec.type = 'button';
-  dec.className = 'step dec';
-  dec.textContent = '−';
-  dec.setAttribute('aria-label', 'Меньше копий');
-  const num = document.createElement('input');
-  num.className = 'copy-input';
-  num.type = 'text';
-  num.inputMode = 'numeric';
-  num.pattern = '[0-9]*';
-  num.autocomplete = 'off';
-  num.min = '1';
-  num.max = '30';
-  num.value = String(item.copies);
-  num.setAttribute('aria-label', 'Количество копий');
-  const inc = document.createElement('button');
-  inc.type = 'button';
-  inc.className = 'step inc';
-  inc.textContent = '+';
-  inc.setAttribute('aria-label', 'Больше копий');
-  copies.append(word, dec, num, inc);
+  const actions = document.createElement('div');
+  actions.className = 'tile-actions';
+  const cropBtn = document.createElement('button');
+  cropBtn.type = 'button';
+  cropBtn.className = 'crop-btn';
+  cropBtn.textContent = 'Изменить кадр';
+  cropBtn.setAttribute('aria-label','Изменить кадр изображения');
   const remove = document.createElement('button');
   remove.type = 'button';
-  remove.className = 'text-btn remove';
-  remove.textContent = 'Убрать';
-  row.append(copies, remove);
-  const cropBtn = document.createElement('button');
-  cropBtn.type = 'button'; cropBtn.className = 'text-btn crop-btn'; cropBtn.textContent = 'Кадрировать';
-  tile.append(frame, label, row, cropBtn);
+  remove.className = 'remove';
+  remove.textContent = 'Удалить изображение';
+  remove.setAttribute('aria-label','Удалить изображение из набора');
+  actions.append(cropBtn,remove);
+  tile.append(frame, label, actions);
   return tile;
 }
 let cropItem = null;
@@ -1338,6 +1407,7 @@ async function addFiles(list) {
 function resetAll() {
   state.items.forEach(item => URL.revokeObjectURL(item.url));
   state.items = [];
+  selectedSheetItemId = null;
   state.sizeMode = '50';
   state.wCm = 5;
   state.hCm = 5;
@@ -1823,11 +1893,7 @@ $('gallery').addEventListener('click', event => {
     return;
   }
   if (event.target.closest('.crop-btn')) { openCrop(item); return; }
-  if (event.target.closest('.dec') || event.target.closest('.inc')) {
-    item.copies = normalizeCopies(item.copies + (event.target.closest('.inc') ? 1 : -1));
-    tile.querySelector('.copy-input').value = String(item.copies);
-    renderOutput();
-  }
+
 });
 $('gallery').addEventListener('input', event => {
   const tile = event.target.closest('[data-id]');
@@ -1838,22 +1904,7 @@ $('gallery').addEventListener('input', event => {
     item.caption = event.target.value;
     if (item.caption.trim() && !state.showLabels) { state.showLabels = true; $('showLabels').checked = true; }
     renderOutput();
-  } else if (event.target.classList.contains('copy-input')) {
-    if (!event.target.value.trim()) return;
-    if (!/^\d+$/.test(event.target.value)) return;
-    const n = normalizeCopies(event.target.value);
-    item.copies = n;
-    renderOutput();
   }
-});
-$('gallery').addEventListener('focusout', event => {
-  if (!event.target.classList.contains('copy-input')) return;
-  const tile = event.target.closest('[data-id]');
-  const item = tile && findItem(tile.dataset.id);
-  if (!item) return;
-  item.copies = normalizeCopies(event.target.value);
-  event.target.value = String(item.copies);
-  renderOutput();
 });
 $('reset').addEventListener('click', () => {
   const ok = window.confirm('Очистить все изображения и вернуть настройки к начальным? Вернуть их будет нельзя.');
