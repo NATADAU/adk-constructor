@@ -63,6 +63,17 @@ try {
   });
   await page.locator('#cropCaption').fill('Вторая подпись');
   await page.locator('#cropApply').click();
+  await test('Gallery thumbnail reflects applied crop', async () => {
+    const galleryImage=page.locator('#gallery .tile-crop-viewport img').first();
+    const printedImage=page.locator('#printRoot .pic img').first();
+    assert.equal(await galleryImage.evaluate(el=>el.style.transform),
+      await printedImage.evaluate(el=>el.style.transform));
+    const ratio=await page.locator('#gallery .tile-crop-viewport').first().evaluate(el=>{
+      const r=el.getBoundingClientRect(); return r.width/r.height;
+    });
+    const expected=await page.evaluate(()=>{const p=layoutPlan(),v=cropViewport(p,true);return v.w/v.h;});
+    assert.ok(Math.abs(ratio-expected)<.03, JSON.stringify({ratio,expected}));
+  });
   await test('Updated caption survives cropping', async () => {
     assert.equal(await page.locator('#printRoot .cap').first().textContent(),'Вторая подпись');
     assert.match(await page.locator('#printRoot .pic img').first().getAttribute('style'),/scale\(2\)/);
