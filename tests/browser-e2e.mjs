@@ -96,6 +96,7 @@ try {
     assert.equal(await page.locator('#printRoot .cap').first().textContent(),'Вторая подпись');
     assert.match(await page.locator('#printRoot .pic img').first().getAttribute('style'),/scale\(2\)/);
   });
+  await page.locator('.mobile-nav [data-pane="sheet"]').click();
   await test('Sheet selector targets only chosen image', async () => {
     const result=await page.evaluate(()=>{
       const a=state.items[0];
