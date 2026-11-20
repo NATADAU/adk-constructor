@@ -52,13 +52,13 @@ try {
     await page.locator('#sheetCopyInput').fill('2');
     assert.equal(await page.locator('#printRoot .sheet-card').count(),2);
   });
+  await page.locator('.mobile-nav [data-pane="images"]').click();
   await test('Image editor contains two clearly named actions, no copies stepper', async () => {
     const tile=page.locator('#gallery .tile').first();
     assert.equal(await tile.getByRole('button',{name:'Изменить кадр изображения'}).count(),1);
     assert.equal(await tile.getByRole('button',{name:'Удалить изображение из набора'}).count(),1);
     assert.equal(await tile.locator('.copy-input').count(),0);
   });
-  await page.locator('.mobile-nav [data-pane="images"]').click();
   await page.locator('.crop-btn').click();
   await test('Crop dialog and large visible slider are available', async () => {
     assert.equal(await page.locator('#cropDialog').isVisible(),true);
