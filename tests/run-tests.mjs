@@ -91,7 +91,7 @@ test('Print and preview share the same buildSheet function', () => {
   assert.ok(html.includes('printRoot.append(buildSheet(pageItems, plan))'));
 });
 test('Mobile input and caption control exist', () => {
-  assert.ok(html.includes("num.inputMode = 'numeric'"));
+  assert.ok(html.includes('id="sheetCopyInput"') && html.includes('inputmode="numeric"'));
   assert.ok(html.includes('id="cropCaption"'));
 });
 test('Nonoverlap formula for crop marks', () => {
