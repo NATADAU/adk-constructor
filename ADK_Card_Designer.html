@@ -421,7 +421,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .cut-corner.tr { right: -3mm; top: -3mm; border-left-width: .25mm; border-bottom-width: .25mm; }
 .cut-corner.bl { left: -3mm; bottom: -3mm; border-right-width: .25mm; border-top-width: .25mm; }
 .cut-corner.br { right: -3mm; bottom: -3mm; border-left-width: .25mm; border-top-width: .25mm; }
-.pic { position: relative; flex: 1 1 auto; min-height: 0; }
+.pic { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .pic img {
   position: absolute;
   inset: 1.2mm;
@@ -431,6 +431,10 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   object-position: center;
 }
 .cap {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  background: #fff;
   margin: 0;
   box-sizing: border-box;
   height: var(--cap);
