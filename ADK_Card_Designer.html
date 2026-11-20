@@ -362,6 +362,18 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   flex-shrink: 0;
 }
 .zoom-group, .print-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.print-actions { flex: 1 1 auto; }
+.print-actions > .btn { flex: 1 1 145px; }
+.more-actions { position: relative; flex: 0 0 auto; }
+.more-actions summary { display: flex; gap: 6px; align-items: center; min-height: 44px; padding: 9px 14px; border: 1px solid var(--clp-line-strong); border-radius: 10px; background: var(--clp-surface); color: var(--clp-text); cursor: pointer; font-size: 14px; font-weight: 600; list-style: none; user-select: none; }
+.more-actions summary::-webkit-details-marker { display: none; }
+.more-actions summary:focus-visible { outline: 2px solid var(--clp-teal); outline-offset: 2px; }
+.more-actions[open] summary { background: var(--clp-teal-soft); }
+.more-actions-menu { position: absolute; top: calc(100% + 5px); right: 0; z-index: 20; display: flex; flex-direction: column; min-width: 180px; padding: 5px; border: 1px solid var(--clp-line-strong); border-radius: 10px; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.13); }
+.more-actions-menu button { background: #fff; border: none; border-radius: 6px; min-height: 44px; padding: 9px 12px; color: var(--clp-text); text-align: left; font: inherit; cursor: pointer; }
+.more-actions-menu button:disabled { opacity: .5; cursor: default; }
+.more-actions-menu button:not(:disabled):hover, .more-actions-menu button:not(:disabled):focus-visible { background: var(--clp-teal-soft); }
+@media (max-width: 720px) { .preview-toolbar { flex-direction: column; align-items: stretch; } .print-actions { width: 100%; flex: none; } .print-actions > .btn { flex: 1 1 calc(50% - 6px); } .more-actions { width: 100%; } .more-actions summary { min-height: 36px; padding: 6px 10px; justify-content: center; } .more-actions-menu { right: 0; left: auto; } .zoom-group { justify-content: flex-start; } }
 .sheet-quantity { border: 1px solid var(--clp-line); background: #fff; border-radius: 12px; padding: 10px 12px; margin: 0 0 10px; display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .sheet-quantity[hidden] { display: none; }
 .sheet-quantity-picker { display: flex; flex: 1 1 170px; flex-direction: column; gap: 4px; min-width: 0; font-size: 13px; color: var(--clp-muted); font-weight: 600; }
@@ -687,20 +699,6 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
       <p id="summary" class="summary" aria-live="polite">Добавьте изображения</p>
       <p id="warn" class="warn" hidden></p>
       <div class="sheet-back"><button type="button" class="btn secondary" id="backToImages">← К изображениям</button></div>
-      <div class="preview-toolbar">
-        <div class="zoom-group" role="group" aria-label="Масштаб предпросмотра">
-          <div class="zoom-seg">
-            <button type="button" class="zoom-btn active" data-zoom="fit" aria-pressed="true">Весь лист</button>
-            <button type="button" class="zoom-btn" data-zoom="large" aria-pressed="false">Увеличить</button>
-          </div>
-        </div>
-        <div class="print-actions">
-          <button type="button" class="btn secondary" id="print" disabled>Напечатать</button>
-          <button type="button" class="btn secondary" id="savePdf" disabled>Скачать PDF</button>
-          <button type="button" class="btn secondary" id="sharePdf" disabled>Поделиться</button>
-          <button type="button" class="btn secondary" id="savePng" disabled>Скачать PNG</button>
-        </div>
-      </div>
       <div class="sheet-quantity" id="sheetQuantity" hidden aria-label="Количество копий на листе">
         <label class="sheet-quantity-picker" for="sheetImageSelect">Изображение
           <select class="control" id="sheetImageSelect" aria-label="Выбрать изображение для изменения количества"></select>
@@ -711,6 +709,25 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
           <button type="button" class="step" id="sheetInc" aria-label="Увеличить количество копий">+</button>
         </div>
         <p class="sheet-quantity-status" id="sheetQuantityStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="preview-toolbar">
+        <div class="print-actions">
+          <button type="button" class="btn secondary" id="savePdf" disabled>Скачать PDF</button>
+          <button type="button" class="btn secondary" id="sharePdf" disabled>Поделиться</button>
+          <details class="more-actions" id="moreActions">
+            <summary aria-label="Дополнительные действия">Ещё <span aria-hidden="true">▾</span></summary>
+            <div class="more-actions-menu">
+              <button type="button" id="print" disabled>Напечатать</button>
+              <button type="button" id="savePng" disabled>Скачать PNG</button>
+            </div>
+          </details>
+        </div>
+        <div class="zoom-group" role="group" aria-label="Масштаб предпросмотра">
+          <div class="zoom-seg">
+            <button type="button" class="zoom-btn active" data-zoom="fit" aria-pressed="true">Весь лист</button>
+            <button type="button" class="zoom-btn" data-zoom="large" aria-pressed="false">Увеличить</button>
+          </div>
+        </div>
       </div>
       <div class="preview-scroll fit-mode" id="previewScroll">
         <div id="preview"></div>
@@ -1927,10 +1944,16 @@ $('reset').addEventListener('click', () => {
   resetAll();
 });
 $('backToImages').addEventListener('click', () => { state.pane = 'images'; syncPane(); });
-$('print').addEventListener('click', () => runPrint());
+$('print').addEventListener('click', () => { $('moreActions').open = false; runPrint(); });
 $('savePdf').addEventListener('click', () => exportAction('pdf'));
 $('sharePdf').addEventListener('click', () => exportAction('share'));
-$('savePng').addEventListener('click', () => exportAction('png'));
+$('savePng').addEventListener('click', () => { $('moreActions').open = false; exportAction('png'); });
+document.addEventListener('pointerdown', event => {
+  if (!$('moreActions').contains(event.target)) $('moreActions').open = false;
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') $('moreActions').open = false;
+});
 let scaleTimer = 0;
 function onViewportChange() {
   clearTimeout(scaleTimer);
