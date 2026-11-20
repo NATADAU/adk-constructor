@@ -40,6 +40,24 @@ try {
     assert.equal(await page.locator('#printRoot .cap').count(),2);
     assert.equal(await page.locator('#printRoot .cap').first().textContent(),'Первый текст');
   });
+  await test('Sheet copy controls update the print sheet immediately', async () => {
+    assert.equal(await page.locator('#sheetQuantity').isVisible(),true);
+    assert.equal(await page.locator('#sheetCopyInput').inputValue(),'2');
+    await page.locator('#sheetInc').click();
+    assert.equal(await page.locator('#printRoot .sheet-card').count(),3);
+    await page.locator('#sheetDec').click();
+    assert.equal(await page.locator('#printRoot .sheet-card').count(),2);
+    await page.locator('#sheetCopyInput').fill('5');
+    assert.equal(await page.locator('#printRoot .sheet-card').count(),5);
+    await page.locator('#sheetCopyInput').fill('2');
+    assert.equal(await page.locator('#printRoot .sheet-card').count(),2);
+  });
+  await test('Image editor contains two clearly named actions, no copies stepper', async () => {
+    const tile=page.locator('#gallery .tile').first();
+    assert.equal(await tile.getByRole('button',{name:'Изменить кадр изображения'}).count(),1);
+    assert.equal(await tile.getByRole('button',{name:'Удалить изображение из набора'}).count(),1);
+    assert.equal(await tile.locator('.copy-input').count(),0);
+  });
   await page.locator('.mobile-nav [data-pane="images"]').click();
   await page.locator('.crop-btn').click();
   await test('Crop dialog and large visible slider are available', async () => {
@@ -77,6 +95,24 @@ try {
   await test('Updated caption survives cropping', async () => {
     assert.equal(await page.locator('#printRoot .cap').first().textContent(),'Вторая подпись');
     assert.match(await page.locator('#printRoot .pic img').first().getAttribute('style'),/scale\(2\)/);
+  });
+  await test('Sheet selector targets only chosen image', async () => {
+    const result=await page.evaluate(()=>{
+      const a=state.items[0];
+      state.items.push({id:'e2e2',url:a.url,caption:'Второй образец',copies:1,crop:null});
+      renderGallery();renderOutput();
+      return [...document.querySelectorAll('#sheetImageSelect option')].map(o=>o.textContent);
+    });
+    assert.equal(result.length,2);
+    await page.locator('#sheetImageSelect').selectOption('e2e2');
+    await page.locator('#sheetInc').click();
+    const counts=await page.evaluate(()=>state.items.map(i=>i.copies));
+    assert.deepEqual(counts,[2,2]);
+    await page.locator('#sheetImageSelect').selectOption('e2e');
+    await page.locator('#sheetInc').click();
+    const counts2=await page.evaluate(()=>state.items.map(i=>i.copies));
+    assert.deepEqual(counts2,[3,2]);
+    await page.evaluate(()=>{state.items=state.items.slice(0,1);state.items[0].copies=2;renderGallery();renderOutput();});
   });
   await test('Cut marks present and nonoverlapping', async () => {
     await page.evaluate(()=>{ state.cutLines=true; state.gap=2; renderOutput(); });
