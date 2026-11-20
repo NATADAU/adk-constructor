@@ -1,0 +1,1420 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Конструктор карточек АДК</title>
+<style>
+:root {
+  --clp-teal: #019BAB;
+  --clp-teal-dark: #007F8E;
+  --clp-teal-light: #5BBEC9;
+  --clp-magenta: #E5004F;
+  --clp-orange: #F8A600;
+  --clp-yellow: #FFDD02;
+  --clp-green: #89BD1E;
+  --clp-bg: #F8F8F8;
+  --clp-surface: #FFFFFF;
+  --clp-text: #2A2A2A;
+  --clp-muted: #626261;
+  --clp-teal-soft: #E6F5F6;
+  --clp-line: #D8E4E6;
+  --clp-line-strong: #B9CDD1;
+  --touch: 44px;
+  color: var(--clp-text);
+  background: var(--clp-bg);
+  font-family: "Montserrat", "Segoe UI", system-ui, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow-x: hidden;
+  background: var(--clp-bg);
+  color: var(--clp-text);
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+:focus-visible { outline: 3px solid var(--clp-teal-light); outline-offset: 2px; }
+.app {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 10px 14px 12px;
+  height: 100dvh;
+  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--clp-surface);
+  border: 1px solid var(--clp-line);
+  border-radius: 14px;
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+.brand-block { min-width: 0; }
+.brand { margin: 0; color: var(--clp-teal); font-weight: 700; font-size: 13px; }
+.topbar h1 { margin: 0; font-size: 21px; line-height: 1.2; color: var(--clp-text); }
+.top-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn {
+  background: var(--clp-surface);
+  color: var(--clp-text);
+  border: 1px solid var(--clp-line-strong);
+  border-radius: 11px;
+  min-height: var(--touch);
+  padding: 10px 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.btn.primary { background: var(--clp-teal); color: #fff; border-color: var(--clp-teal); }
+.btn.primary:hover:not(:disabled) { background: var(--clp-teal-dark); border-color: var(--clp-teal-dark); }
+.btn.secondary { background: var(--clp-surface); color: var(--clp-text); border-color: var(--clp-line-strong); }
+.btn.secondary:hover:not(:disabled) { border-color: var(--clp-teal); color: var(--clp-teal-dark); }
+.btn.small { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+.link-btn {
+  border: 0;
+  background: transparent;
+  color: var(--clp-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 8px 4px;
+  min-height: var(--touch);
+  font-weight: 600;
+}
+.link-btn:hover { color: var(--clp-text); }
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--clp-muted);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 4px;
+  min-height: var(--touch);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.help-link:hover { color: var(--clp-teal-dark); }
+.help-link svg { flex-shrink: 0; color: var(--clp-orange); }
+.hint { color: var(--clp-muted); margin: 0; font-size: 14px; }
+.status { min-height: 1.2em; margin: 0; color: var(--clp-muted); font-size: 13px; }
+.popover {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(42, 42, 42, .28);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 72px 16px 16px;
+}
+.popover[hidden] { display: none; }
+.popover-card {
+  width: min(420px, 100%);
+  background: var(--clp-surface);
+  border: 1px solid var(--clp-line);
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(42, 42, 42, .12);
+  padding: 16px;
+}
+.popover-card h2 { margin: 0 0 8px; font-size: 18px; color: var(--clp-text); }
+.popover-card p { margin: 0 0 10px; color: var(--clp-muted); font-size: 14px; }
+.popover-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0 0 12px; }
+.popover-links a {
+  color: var(--clp-teal);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+}
+.popover-links a:hover { color: var(--clp-teal-dark); }
+.popover-close {
+  border: 0;
+  background: transparent;
+  color: var(--clp-muted);
+  font-weight: 600;
+  padding: 8px 0 0;
+}
+.mobile-nav {
+  display: none;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  flex-shrink: 0;
+}
+.mobile-nav .nav-btn {
+  min-height: var(--touch);
+  border: 1px solid var(--clp-line);
+  background: var(--clp-surface);
+  color: var(--clp-text);
+  border-radius: 12px;
+  font-weight: 700;
+  padding: 8px 6px;
+}
+.mobile-nav .nav-btn.active {
+  background: var(--clp-teal);
+  color: #fff;
+  border-color: var(--clp-teal);
+}
+.work {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(280px, 35%) minmax(0, 65%);
+  gap: 12px;
+  align-items: stretch;
+}
+.left-col {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+}
+.settings, .panel {
+  background: var(--clp-surface);
+  border: 1px solid var(--clp-line);
+  border-radius: 14px;
+  padding: 12px;
+}
+.mode-block { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--clp-line); }
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+.group-title {
+  display: block;
+  margin: 0 0 6px;
+  color: var(--clp-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--clp-line-strong);
+  background: var(--clp-surface);
+  color: var(--clp-text);
+  border-radius: 999px;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.chip.active { background: var(--clp-teal); color: #fff; border-color: var(--clp-teal); }
+.mode-chips .chip { min-width: 110px; }
+.custom-size { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.custom-size[hidden] { display: none; }
+.custom-size label, .mini-fields label, .tile-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--clp-muted);
+  font-size: 13px;
+}
+.control {
+  min-height: var(--touch);
+  height: auto;
+  border: 1px solid var(--clp-line-strong);
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: var(--clp-surface);
+  min-width: 0;
+}
+input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch); }
+.mini-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.mini-fields select { width: 100%; }
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--clp-text);
+  font-size: 14px;
+  font-weight: 600;
+  min-height: var(--touch);
+}
+.check.inline { margin-top: 0; }
+.check input { width: 22px; height: 22px; accent-color: var(--clp-teal); flex-shrink: 0; }
+.cut-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+.size-now { margin: 8px 0 0; color: var(--clp-muted); font-size: 13px; }
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.panel h2 { margin: 0; font-size: 18px; color: var(--clp-text); }
+.pill {
+  background: var(--clp-teal-soft);
+  color: var(--clp-teal-dark);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.tile {
+  border: 1px solid var(--clp-line);
+  border-radius: 12px;
+  padding: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  background: var(--clp-surface);
+}
+.tile-pic { position: relative; height: 110px; border-radius: 9px; background: var(--clp-bg); }
+.tile-pic img {
+  position: absolute; inset: 6px;
+  width: calc(100% - 12px); height: calc(100% - 12px);
+  object-fit: contain; object-position: center;
+}
+.tile-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.copies { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--clp-muted); }
+.step {
+  width: var(--touch); height: var(--touch); border-radius: 10px; border: 1px solid var(--clp-line-strong);
+  background: var(--clp-teal-soft); color: var(--clp-teal-dark); font-size: 22px; line-height: 1;
+}
+.copy-input {
+  width: 52px; min-height: var(--touch); text-align: center; border: 1px solid var(--clp-line-strong); border-radius: 10px;
+  -moz-appearance: textfield; appearance: textfield;
+}
+.copy-input::-webkit-outer-spin-button, .copy-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.text-btn {
+  border: 0; background: transparent; color: var(--clp-magenta);
+  padding: 8px 10px; font-size: 14px; min-height: var(--touch);
+}
+.empty {
+  border: 1px dashed var(--clp-line-strong);
+  border-radius: 12px;
+  color: var(--clp-muted);
+  text-align: center;
+  padding: 18px;
+  margin: 0;
+}
+.gallery .empty { grid-column: 1 / -1; }
+.preview-panel {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.summary {
+  margin: 0 0 8px;
+  font-weight: 600;
+  color: var(--clp-muted);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.warn {
+  background: var(--clp-teal-soft);
+  border: 1px solid var(--clp-line);
+  color: var(--clp-text);
+  border-radius: 11px;
+  padding: 10px 12px;
+  margin: 0 0 8px;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.warn[hidden] { display: none; }
+.preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  flex-shrink: 0;
+}
+.zoom-group, .print-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.zoom-seg {
+  display: inline-flex;
+  border: 1px solid var(--clp-line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--clp-surface);
+}
+.zoom-seg .zoom-btn {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--clp-muted);
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.zoom-seg .zoom-btn + .zoom-btn { border-left: 1px solid var(--clp-line); }
+.zoom-seg .zoom-btn.active { background: var(--clp-teal-soft); color: var(--clp-teal-dark); }
+.preview-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--clp-teal-soft);
+  border: 1px solid var(--clp-line);
+}
+.preview-scroll.fit-mode { overflow: hidden; }
+.preview-scroll.zoom-mode { overflow: auto; -webkit-overflow-scrolling: touch; }
+.sheet-block { margin: 0 auto 12px; width: max-content; max-width: 100%; }
+.sheet-block:last-child { margin-bottom: 0; }
+.sheet-label { text-align: center; color: var(--clp-muted); font-size: 13px; margin: 6px 0 0; }
+.sheet-view {
+  position: relative;
+  margin: 0 auto;
+  background: var(--clp-surface);
+  border: 1px solid var(--clp-line);
+  box-shadow: 0 8px 20px rgba(42, 42, 42, .08);
+  overflow: hidden;
+}
+.sheet { background: #fff; overflow: hidden; }
+.sheet-view .sheet { position: absolute; top: 0; left: 0; transform-origin: top left; }
+.sheet-card {
+  position: absolute;
+  box-sizing: border-box;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+  z-index: 1;
+}
+.sheet-view .sheet-card.ghost-edge { outline: 1px dashed #B9CDD1; outline-offset: -1px; }
+.cut-guide {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  background: transparent;
+  border: 0.25mm solid #555;
+  z-index: 3;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.cut-guide.dashed { border-style: dashed; }
+.pic { position: relative; flex: 1 1 auto; min-height: 0; }
+.pic img {
+  position: absolute;
+  inset: 1.2mm;
+  width: calc(100% - 2.4mm);
+  height: calc(100% - 2.4mm);
+  object-fit: contain;
+  object-position: center;
+}
+.cap {
+  margin: 0;
+  box-sizing: border-box;
+  height: var(--cap);
+  padding: 0 1.4mm 1mm;
+  text-align: center;
+  font-family: Arial, "Segoe UI", sans-serif;
+  font-weight: 700;
+  line-height: 1.15;
+  color: #2A2A2A;
+}
+.cap.one { font-size: calc(var(--cap) * .46); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap.two { font-size: calc(var(--cap) * .34); overflow: hidden; }
+.drop-active .topbar,
+.drop-active .left-col,
+.drop-active .preview-panel { outline: 2px dashed var(--clp-teal); outline-offset: 2px; }
+.print-root { display: none; }
+
+/* Tablet / narrow screens: tabs */
+@media (max-width: 1024px) {
+  .app {
+    height: auto;
+    max-height: none;
+    min-height: 100dvh;
+    overflow: visible;
+    padding-bottom: 18px;
+  }
+  .mobile-nav { display: grid; }
+  .work {
+    grid-template-columns: 1fr;
+    flex: none;
+    min-height: 0;
+  }
+  .left-col {
+    overflow: visible;
+    display: contents;
+  }
+  .pane { display: none; }
+  .app[data-pane="sheet"] .pane-sheet { display: flex; }
+  .app[data-pane="settings"] .pane-settings { display: block; }
+  .app[data-pane="images"] .pane-images { display: block; }
+  .preview-panel {
+    height: calc(100dvh - 170px);
+    min-height: 420px;
+  }
+  .settings-grid { grid-template-columns: 1fr 1fr; }
+  .top-actions { width: 100%; }
+  .top-actions .btn { flex: 1 1 auto; }
+}
+@media (max-width: 720px) {
+  .settings-grid, .mini-fields { grid-template-columns: 1fr; }
+  .topbar h1 { font-size: 19px; }
+  .print-actions { width: 100%; }
+  .print-actions .btn { flex: 1 1 auto; }
+}
+@media (min-width: 1025px) {
+  .pane { display: block !important; }
+  .preview-panel.pane { display: flex !important; }
+}
+
+@page { size: 210mm 297mm; margin: 0; }
+@media print {
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; height: auto !important; overflow: visible !important; }
+  .app { display: none !important; }
+  .print-root { display: block !important; }
+  .print-root .sheet {
+    position: relative;
+    transform: none !important;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+  }
+  .print-root .sheet:last-child { break-after: auto; page-break-after: auto; }
+  .sheet-card.ghost-edge { outline: none !important; }
+  .cut-guide {
+    border-color: #444 !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+}
+</style>
+<style id="pageCss"></style>
+</head>
+<body>
+<div class="app" id="dropZone" data-pane="sheet">
+  <header class="topbar">
+    <div class="brand-block">
+      <p class="brand">Библиотека АДК</p>
+      <h1>Конструктор карточек</h1>
+    </div>
+    <div class="top-actions">
+      <button type="button" class="btn primary" id="pick">Добавить изображения</button>
+      <button type="button" class="help-link" id="bgHelpBtn" aria-haspopup="dialog" aria-controls="bgHelp">
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 21h6v-1.5H9V21zm3-19a6 6 0 0 0-4 10.5V15a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.5A6 6 0 0 0 12 2zm2.5 11.2V14h-5v-.8A4.5 4.5 0 1 1 14.5 13.2z"/></svg>
+        Как убрать фон?
+      </button>
+      <button type="button" class="link-btn" id="reset">Начать заново</button>
+      <input id="files" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple hidden>
+    </div>
+  </header>
+
+  <nav class="mobile-nav" aria-label="Разделы">
+    <button type="button" class="nav-btn active" data-pane="sheet">Лист</button>
+    <button type="button" class="nav-btn" data-pane="settings">Настройки</button>
+    <button type="button" class="nav-btn" data-pane="images">Изображения</button>
+  </nav>
+
+  <div class="work">
+    <div class="left-col">
+      <section class="settings pane pane-settings" id="settings" aria-label="Настройки">
+        <p id="status" class="status" role="status"></p>
+        <div class="mode-block">
+          <span class="group-title">Что хотите подготовить?</span>
+          <div class="chips mode-chips" role="group" aria-label="Режим работы">
+            <button type="button" class="chip" data-mode="pictures">Картинки</button>
+            <button type="button" class="chip active" data-mode="cards" aria-pressed="true">Карточки</button>
+          </div>
+        </div>
+        <div class="settings-grid">
+          <div>
+            <span class="group-title" id="sizeTitle">Размер карточки</span>
+            <div class="chips" id="sizeChips" role="group" aria-label="Размер">
+              <button type="button" class="chip" data-size="30">3 × 3 см</button>
+              <button type="button" class="chip active" data-size="50" aria-pressed="true">5 × 5 см</button>
+              <button type="button" class="chip" data-size="70">7 × 7 см</button>
+              <button type="button" class="chip" data-size="100">10 × 10 см</button>
+              <button type="button" class="chip" data-size="custom">Свой</button>
+            </div>
+            <div id="customSize" class="custom-size" hidden>
+              <label>Ширина, см <input class="control" id="widthCm" inputmode="decimal" value="5"></label>
+              <label>Высота, см <input class="control" id="heightCm" inputmode="decimal" value="5"></label>
+            </div>
+            <p id="sizeNow" class="size-now">На бумаге: 5,0 × 5,0 см</p>
+          </div>
+          <div>
+            <span class="group-title">Оформление</span>
+            <div class="mini-fields">
+              <label>Рамка
+                <select id="border" class="control">
+                  <option value="normal" selected>Обычная</option>
+                  <option value="thin">Тонкая</option>
+                  <option value="none">Без рамки</option>
+                </select>
+              </label>
+              <label>Цвет рамки
+                <input id="borderColor" class="control" type="color" value="#019BAB">
+              </label>
+            </div>
+            <label class="check"><input id="showLabels" type="checkbox" checked> Показывать подписи</label>
+            <div class="cut-row">
+              <label class="check inline"><input id="cutLines" type="checkbox"> Линии разреза</label>
+              <label>Вид линий
+                <select id="cutStyle" class="control">
+                  <option value="solid">Сплошные</option>
+                  <option value="dashed" selected>Пунктирные</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div>
+            <span class="group-title">Лист</span>
+            <div class="mini-fields">
+              <label>Формат
+                <select id="paper" class="control">
+                  <option value="a4" selected>А4</option>
+                  <option value="a3">А3</option>
+                </select>
+              </label>
+              <label>Положение
+                <select id="orient" class="control">
+                  <option value="portrait" selected>Книжное</option>
+                  <option value="landscape">Альбомное</option>
+                </select>
+              </label>
+              <label>Поля
+                <select id="margin" class="control">
+                  <option value="5">5 мм</option>
+                  <option value="10" selected>10 мм</option>
+                  <option value="15">15 мм</option>
+                </select>
+              </label>
+              <label>Промежуток
+                <select id="gap" class="control">
+                  <option value="2">2 мм</option>
+                  <option value="3" selected>3 мм</option>
+                  <option value="5">5 мм</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pane pane-images" id="cardsPanel">
+        <div class="panel-head">
+          <h2>Изображения</h2>
+          <span id="countLabel" class="pill">0</span>
+        </div>
+        <div id="gallery" class="gallery"></div>
+      </section>
+    </div>
+
+    <section class="panel preview-panel pane pane-sheet" id="printPanel">
+      <p id="summary" class="summary" aria-live="polite">Добавьте изображения</p>
+      <p id="warn" class="warn" hidden></p>
+      <div class="preview-toolbar">
+        <div class="zoom-group" role="group" aria-label="Масштаб предпросмотра">
+          <div class="zoom-seg">
+            <button type="button" class="zoom-btn active" data-zoom="fit" aria-pressed="true">Весь лист</button>
+            <button type="button" class="zoom-btn" data-zoom="large" aria-pressed="false">Увеличить</button>
+          </div>
+        </div>
+        <div class="print-actions">
+          <button type="button" class="btn secondary" id="print" disabled>Напечатать</button>
+          <button type="button" class="btn secondary" id="savePdf" disabled>Скачать PDF</button>
+        </div>
+      </div>
+      <div class="preview-scroll fit-mode" id="previewScroll">
+        <div id="preview"></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="bgHelp" class="popover" hidden>
+  <div class="popover-card" role="dialog" aria-modal="true" aria-labelledby="bgHelpTitle" id="bgHelpCard">
+    <h2 id="bgHelpTitle">Как убрать фон</h2>
+    <p>Если у картинки лишний фон, удалите его на одном из сайтов, скачайте PNG и загрузите в конструктор.</p>
+    <div class="popover-links">
+      <a href="https://smartluvon.ai/udalit-fon" target="_blank" rel="noopener noreferrer">Smartluvon</a>
+      <a href="https://pixlr.com/remove-background/" target="_blank" rel="noopener noreferrer">Pixlr</a>
+      <a href="https://velmet44.github.io/rmbg/" target="_blank" rel="noopener noreferrer">RMBG</a>
+      <a href="https://acetone.ai/" target="_blank" rel="noopener noreferrer">Acetone</a>
+    </div>
+    <button type="button" class="popover-close" id="bgHelpClose">Закрыть</button>
+  </div>
+</div>
+<div id="printRoot" class="print-root" aria-hidden="true"></div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const state = {
+  items: [],
+  mode: 'cards',
+  sizeMode: '50',
+  wCm: 5,
+  hCm: 5,
+  border: 'normal',
+  borderColor: '#019BAB',
+  showLabels: true,
+  cutLines: false,
+  cutStyle: 'dashed',
+  paper: 'a4',
+  orient: 'portrait',
+  margin: 10,
+  gap: 3,
+  zoom: 'fit',
+  pane: 'sheet'
+};
+let seq = 0;
+let lastKey = '';
+
+function safeColor(value) {
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#019BAB';
+}
+function parseCm(value) {
+  const text = String(value).trim().replace(',', '.');
+  if (!text) return null;
+  const n = Number(text);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 10) / 10;
+}
+function clampCm(n) {
+  return Math.min(40, Math.max(1, n));
+}
+function cmLabel(mm) {
+  return (mm / 10).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+function normalizeCopies(n) {
+  n = Math.round(Number(n));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(30, n);
+}
+function pageMm() {
+  let w = state.paper === 'a3' ? 297 : 210;
+  let h = state.paper === 'a3' ? 420 : 297;
+  if (state.orient === 'landscape') { const t = w; w = h; h = t; }
+  return { w, h };
+}
+function cardMm() {
+  if (state.sizeMode !== 'custom') {
+    const side = Number(state.sizeMode);
+    return { w: side, h: side };
+  }
+  return { w: Math.round(state.wCm * 10), h: Math.round(state.hCm * 10) };
+}
+function borderWidth() {
+  if (state.border === 'none') return 0;
+  if (state.border === 'thin') return 0.35;
+  return 0.7;
+}
+function paperWords() {
+  const name = state.paper === 'a3' ? 'А3' : 'А4';
+  const orient = state.orient === 'landscape' ? 'альбомное положение' : 'книжное положение';
+  return name + ', ' + orient;
+}
+function layoutPlan() {
+  const page = pageMm();
+  const card = cardMm();
+  const margin = state.margin;
+  const gap = state.gap;
+  const innerW = page.w - margin * 2;
+  const innerH = page.h - margin * 2;
+  const base = { page, card, margin, gap, cols: 0, rows: 0, perSheet: 0, error: '' };
+  if (card.w > innerW + 0.01 || card.h > innerH + 0.01) {
+    base.error = 'Размер ' + cmLabel(card.w) + ' × ' + cmLabel(card.h) + ' см не помещается на лист ' + (state.paper === 'a3' ? 'А3' : 'А4') + ' с полями ' + margin + ' мм. Уменьшите размер или поля либо выберите лист побольше.';
+    return base;
+  }
+  const cols = Math.floor((innerW + gap) / (card.w + gap));
+  const rows = Math.floor((innerH + gap) / (card.h + gap));
+  base.cols = cols;
+  base.rows = rows;
+  base.perSheet = cols * rows;
+  if (!base.perSheet) base.error = 'Не удалось разложить элементы на листе. Измените размер или поля.';
+  return base;
+}
+function slots() {
+  const list = [];
+  state.items.forEach(item => {
+    const n = normalizeCopies(item.copies);
+    for (let i = 0; i < n; i++) list.push(item);
+  });
+  return list;
+}
+function splitPages(plan) {
+  const all = slots();
+  const pages = [];
+  if (!plan.perSheet) return pages;
+  for (let i = 0; i < all.length; i += plan.perSheet) pages.push(all.slice(i, i + plan.perSheet));
+  return pages;
+}
+function captionShown(item) {
+  return state.showLabels && !!item.caption.trim();
+}
+function structureKey(plan) {
+  const ids = state.items.map(item => item.id + 'x' + normalizeCopies(item.copies)).join(',');
+  const caps = state.items.map(item => captionShown(item) ? '1' : '0').join('');
+  return [
+    state.mode, plan.page.w, plan.page.h, plan.card.w, plan.card.h, plan.margin, plan.gap,
+    plan.cols, plan.rows, borderWidth(), safeColor(state.borderColor),
+    state.showLabels ? '1' : '0', state.cutLines ? '1' : '0', state.cutStyle,
+    plan.error, ids, caps
+  ].join('|');
+}
+async function sniff(file) {
+  const buf = await file.slice(0, 16).arrayBuffer();
+  const b = new Uint8Array(buf);
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47 && b[4] === 0x0D && b[5] === 0x0A && b[6] === 0x1A && b[7] === 0x0A) return 'image/png';
+  if (b.length >= 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'image/jpeg';
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  return '';
+}
+function syncSizeButtons() {
+  document.querySelectorAll('#sizeChips [data-size]').forEach(btn => {
+    const on = btn.dataset.size === state.sizeMode;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  $('customSize').hidden = state.sizeMode !== 'custom';
+}
+function syncZoomButtons() {
+  document.querySelectorAll('.zoom-btn').forEach(btn => {
+    const on = btn.dataset.zoom === state.zoom;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const box = $('previewScroll');
+  const manySheets = $('preview').querySelectorAll('.sheet-block').length > 1;
+  box.classList.toggle('fit-mode', state.zoom === 'fit' && !manySheets);
+  box.classList.toggle('zoom-mode', state.zoom === 'large' || (state.zoom === 'fit' && manySheets));
+  if (state.zoom === 'fit' && manySheets) box.style.overflowX = 'hidden';
+  else box.style.overflowX = '';
+}
+function syncModeButtons() {
+  document.querySelectorAll('[data-mode]').forEach(btn => {
+    const on = btn.dataset.mode === state.mode;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  $('sizeTitle').textContent = state.mode === 'pictures' ? 'Размер изображения' : 'Размер карточки';
+}
+function syncFormControls() {
+  $('border').value = state.border;
+  $('borderColor').value = safeColor(state.borderColor);
+  $('borderColor').disabled = state.border === 'none';
+  $('showLabels').checked = state.showLabels;
+  $('cutLines').checked = state.cutLines;
+  $('cutStyle').value = state.cutStyle;
+  $('cutStyle').disabled = !state.cutLines;
+}
+function syncPane() {
+  $('dropZone').dataset.pane = state.pane;
+  document.querySelectorAll('.mobile-nav .nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.pane === state.pane);
+  });
+  requestAnimationFrame(() => requestAnimationFrame(applyScale));
+}
+function applyModeDefaults(mode) {
+  state.mode = mode;
+  if (mode === 'pictures') {
+    state.border = 'none';
+    state.showLabels = false;
+    state.cutLines = true;
+    state.cutStyle = 'dashed';
+  } else {
+    state.border = 'normal';
+    state.showLabels = true;
+    state.cutLines = false;
+    state.cutStyle = 'dashed';
+  }
+  syncModeButtons();
+  syncFormControls();
+}
+function buildCard(item, plan, x, y) {
+  const card = document.createElement('article');
+  card.className = 'sheet-card';
+  card.style.left = x + 'mm';
+  card.style.top = y + 'mm';
+  card.style.width = plan.card.w + 'mm';
+  card.style.height = plan.card.h + 'mm';
+  const width = borderWidth();
+  if (width > 0) card.style.border = width + 'mm solid ' + safeColor(state.borderColor);
+  else if (!state.cutLines) card.classList.add('ghost-edge');
+  const pic = document.createElement('div');
+  pic.className = 'pic';
+  const img = document.createElement('img');
+  img.alt = item.caption.trim() || 'Изображение без подписи';
+  img.src = item.url;
+  pic.append(img);
+  card.append(pic);
+  if (captionShown(item)) {
+    const text = item.caption.trim();
+    const capH = Math.max(6, Math.min(12, plan.card.h * 0.2));
+    card.style.setProperty('--cap', capH + 'mm');
+    const cap = document.createElement('p');
+    cap.className = 'cap ' + (plan.card.h >= 70 ? 'two' : 'one');
+    cap.textContent = text;
+    card.append(cap);
+  }
+  return card;
+}
+function buildCutGuide(plan, x, y) {
+  const guide = document.createElement('div');
+  guide.className = 'cut-guide' + (state.cutStyle === 'dashed' ? ' dashed' : '');
+  guide.style.left = x + 'mm';
+  guide.style.top = y + 'mm';
+  guide.style.width = plan.card.w + 'mm';
+  guide.style.height = plan.card.h + 'mm';
+  guide.setAttribute('aria-hidden', 'true');
+  return guide;
+}
+function buildSheet(pageItems, plan) {
+  const sheet = document.createElement('section');
+  sheet.className = 'sheet';
+  sheet.style.width = plan.page.w + 'mm';
+  sheet.style.height = plan.page.h + 'mm';
+  pageItems.forEach((item, index) => {
+    const col = index % plan.cols;
+    const row = Math.floor(index / plan.cols);
+    const x = plan.margin + col * (plan.card.w + plan.gap);
+    const y = plan.margin + row * (plan.card.h + plan.gap);
+    sheet.append(buildCard(item, plan, x, y));
+    if (state.cutLines) sheet.append(buildCutGuide(plan, x, y));
+  });
+  return sheet;
+}
+function previewScale(pageWmm, pageHmm) {
+  const box = $('previewScroll');
+  const pad = 16;
+  const labelReserve = state.zoom === 'fit' ? 30 : 0;
+  const availW = Math.max(100, (box.clientWidth || 320) - pad);
+  const availH = Math.max(100, (box.clientHeight || 420) - pad - labelReserve);
+  const pageWpx = pageWmm / 25.4 * 96;
+  const pageHpx = pageHmm / 25.4 * 96;
+  const fit = Math.min(availW / pageWpx, availH / pageHpx);
+  if (state.zoom === 'large') {
+    const wide = availW / pageWpx;
+    return Math.min(1.6, Math.max(fit * 1.65, wide * 1.05, fit + 0.2));
+  }
+  return Math.max(0.05, fit * 0.96);
+}
+function mountPreview(sheet, scale, plan) {
+  const view = document.createElement('div');
+  view.className = 'sheet-view';
+  view.style.width = (plan.page.w / 25.4 * 96 * scale) + 'px';
+  view.style.height = (plan.page.h / 25.4 * 96 * scale) + 'px';
+  sheet.style.transform = 'scale(' + scale + ')';
+  view.append(sheet);
+  return view;
+}
+function applyScale() {
+  const plan = layoutPlan();
+  if (plan.error || !slots().length) return;
+  syncZoomButtons();
+  const scale = previewScale(plan.page.w, plan.page.h);
+  document.querySelectorAll('.sheet-view').forEach(view => {
+    const sheet = view.querySelector('.sheet');
+    if (!sheet) return;
+    view.style.width = (plan.page.w / 25.4 * 96 * scale) + 'px';
+    view.style.height = (plan.page.h / 25.4 * 96 * scale) + 'px';
+    sheet.style.transform = 'scale(' + scale + ')';
+  });
+}
+function syncCaptionText() {
+  const all = slots();
+  ['preview', 'printRoot'].forEach(id => {
+    $(id).querySelectorAll('.sheet-card').forEach((card, index) => {
+      const cap = card.querySelector('.cap');
+      if (cap && all[index]) cap.textContent = all[index].caption.trim();
+    });
+  });
+}
+function captionsNeedRebuild() {
+  const all = slots();
+  const cards = $('printRoot').querySelectorAll('.sheet-card');
+  if (cards.length !== all.length) return true;
+  for (let i = 0; i < all.length; i++) {
+    const has = !!cards[i].querySelector('.cap');
+    if (has !== captionShown(all[i])) return true;
+  }
+  return false;
+}
+function itemWord(n) {
+  return state.mode === 'pictures'
+    ? (n === 1 ? 'картинка' : (n >= 2 && n <= 4 ? 'картинки' : 'картинок'))
+    : (n === 1 ? 'карточка' : (n >= 2 && n <= 4 ? 'карточки' : 'карточек'));
+}
+function setPrintEnabled(on) {
+  $('print').disabled = !on;
+  $('savePdf').disabled = !on;
+}
+function syncPrimaryActions() {
+  const has = state.items.length > 0;
+  $('pick').classList.toggle('primary', !has);
+  $('pick').classList.toggle('secondary', has);
+  $('savePdf').classList.toggle('primary', has && !$('savePdf').disabled);
+  $('savePdf').classList.toggle('secondary', !has || $('savePdf').disabled);
+}
+function renderOutput() {
+  const plan = layoutPlan();
+  const key = structureKey(plan);
+  $('pageCss').textContent = '@page{size:' + plan.page.w + 'mm ' + plan.page.h + 'mm;margin:0;}';
+  $('sizeNow').textContent = 'На бумаге: ' + cmLabel(plan.card.w) + ' × ' + cmLabel(plan.card.h) + ' см';
+  if (key === lastKey && !plan.error && !captionsNeedRebuild()) {
+    syncCaptionText();
+    applyScale();
+    return;
+  }
+  lastKey = key;
+  const warn = $('warn');
+  const summary = $('summary');
+  const total = slots().length;
+  const pageList = plan.error ? [] : splitPages(plan);
+  const paperName = state.paper === 'a3' ? 'А3' : 'А4';
+  if (plan.error) {
+    warn.hidden = false;
+    warn.textContent = plan.error;
+    summary.textContent = paperName;
+  } else {
+    warn.hidden = true;
+    warn.textContent = '';
+    summary.textContent = total
+      ? total + ' ' + itemWord(total) + ' · ' + pageList.length + ' ' + sheetWord(pageList.length) + ' · ' + paperName
+      : 'Добавьте изображения';
+  }
+  summary.dataset.cardW = String(plan.card.w);
+  summary.dataset.cardH = String(plan.card.h);
+  summary.dataset.cols = String(plan.cols);
+  summary.dataset.rows = String(plan.rows);
+  summary.dataset.per = String(plan.perSheet);
+  summary.dataset.total = String(total);
+  summary.dataset.sheets = String(pageList.length);
+  summary.dataset.pageW = String(plan.page.w);
+  summary.dataset.pageH = String(plan.page.h);
+  summary.dataset.showLabels = state.showLabels ? '1' : '0';
+  summary.dataset.mode = state.mode;
+  summary.dataset.cuts = state.cutLines ? '1' : '0';
+  summary.dataset.cutStyle = state.cutStyle;
+  setPrintEnabled(!plan.error && total > 0);
+  syncPrimaryActions();
+  const preview = $('preview');
+  const printRoot = $('printRoot');
+  preview.replaceChildren();
+  printRoot.replaceChildren();
+  if (!pageList.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = plan.error ? 'Лист появится, когда размер поместится на бумагу.' : 'Здесь будет лист для печати.';
+    preview.append(empty);
+    return;
+  }
+  const scale = previewScale(plan.page.w, plan.page.h);
+  pageList.forEach((pageItems, index) => {
+    const block = document.createElement('div');
+    block.className = 'sheet-block';
+    block.append(mountPreview(buildSheet(pageItems, plan), scale, plan));
+    const label = document.createElement('p');
+    label.className = 'sheet-label';
+    label.textContent = 'Лист ' + (index + 1) + ' из ' + pageList.length;
+    block.append(label);
+    preview.append(block);
+    printRoot.append(buildSheet(pageItems, plan));
+  });
+  requestAnimationFrame(applyScale);
+}
+function sheetWord(n) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'лист';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'листа';
+  return 'листов';
+}
+function renderGallery() {
+  const gallery = $('gallery');
+  gallery.replaceChildren();
+  $('countLabel').textContent = String(state.items.length);
+  if (!state.items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'Пока пусто — добавьте изображения сверху.';
+    gallery.append(empty);
+    return;
+  }
+  state.items.forEach(item => gallery.append(tileElement(item)));
+  syncPrimaryActions();
+}
+function tileElement(item) {
+  const tile = document.createElement('article');
+  tile.className = 'tile';
+  tile.dataset.id = item.id;
+  const frame = document.createElement('div');
+  frame.className = 'tile-pic';
+  const img = document.createElement('img');
+  img.alt = '';
+  img.draggable = false;
+  img.src = item.url;
+  frame.append(img);
+  const label = document.createElement('label');
+  label.className = 'tile-label';
+  label.append('Подпись');
+  const input = document.createElement('input');
+  input.className = 'control cap-input';
+  input.type = 'text';
+  input.maxLength = 80;
+  input.placeholder = 'Необязательно';
+  input.value = item.caption;
+  label.append(input);
+  const row = document.createElement('div');
+  row.className = 'tile-row';
+  const copies = document.createElement('div');
+  copies.className = 'copies';
+  const word = document.createElement('span');
+  word.textContent = 'Копий';
+  const dec = document.createElement('button');
+  dec.type = 'button';
+  dec.className = 'step dec';
+  dec.textContent = '−';
+  dec.setAttribute('aria-label', 'Меньше копий');
+  const num = document.createElement('input');
+  num.className = 'copy-input';
+  num.type = 'number';
+  num.min = '1';
+  num.max = '30';
+  num.value = String(item.copies);
+  num.setAttribute('aria-label', 'Количество копий');
+  const inc = document.createElement('button');
+  inc.type = 'button';
+  inc.className = 'step inc';
+  inc.textContent = '+';
+  inc.setAttribute('aria-label', 'Больше копий');
+  copies.append(word, dec, num, inc);
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'text-btn remove';
+  remove.textContent = 'Убрать';
+  row.append(copies, remove);
+  tile.append(frame, label, row);
+  return tile;
+}
+function findItem(id) {
+  return state.items.find(item => item.id === id);
+}
+async function addFiles(list) {
+  const files = [...list];
+  if (!files.length) return;
+  let added = 0;
+  let rejected = 0;
+  let tooBig = 0;
+  $('status').textContent = 'Добавляю изображения…';
+  for (const file of files) {
+    if (file.size > 25 * 1024 * 1024) { tooBig++; continue; }
+    let type = '';
+    try { type = await sniff(file); } catch (err) { type = ''; }
+    if (!type) { rejected++; continue; }
+    const blob = file.type === type ? file : new Blob([file], { type });
+    state.items.push({
+      id: String(++seq),
+      url: URL.createObjectURL(blob),
+      caption: '',
+      copies: 1
+    });
+    added++;
+  }
+  const parts = [];
+  if (added) parts.push('Добавлено: ' + added + ' шт.');
+  if (rejected) parts.push('Пропущено: ' + rejected + ' шт. Подойдут только PNG, JPG и WEBP.');
+  if (tooBig) parts.push('Не добавлены файлы больше 25 МБ: ' + tooBig + ' шт.');
+  $('status').textContent = parts.join(' ') || 'Не удалось добавить файлы.';
+  $('files').value = '';
+  renderGallery();
+  renderOutput();
+  if (added && window.matchMedia('(max-width: 1024px)').matches) {
+    state.pane = 'sheet';
+    syncPane();
+  }
+}
+function resetAll() {
+  state.items.forEach(item => URL.revokeObjectURL(item.url));
+  state.items = [];
+  state.sizeMode = '50';
+  state.wCm = 5;
+  state.hCm = 5;
+  state.borderColor = '#019BAB';
+  state.paper = 'a4';
+  state.orient = 'portrait';
+  state.margin = 10;
+  state.gap = 3;
+  state.zoom = 'fit';
+  state.pane = 'sheet';
+  $('paper').value = 'a4';
+  $('orient').value = 'portrait';
+  $('margin').value = '10';
+  $('gap').value = '3';
+  $('widthCm').value = '5';
+  $('heightCm').value = '5';
+  $('files').value = '';
+  $('status').textContent = 'Набор очищен. Можно загружать изображения заново.';
+  applyModeDefaults('cards');
+  syncSizeButtons();
+  syncZoomButtons();
+  syncPane();
+  renderGallery();
+  renderOutput();
+}
+function imageFilesFromClipboard(data) {
+  const found = [];
+  if (data.items && data.items.length) {
+    for (const item of data.items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file && (!file.type || file.type.startsWith('image/'))) found.push(file);
+      }
+    }
+  }
+  if (found.length) return found;
+  return [...(data.files || [])].filter(file => !file.type || file.type.startsWith('image/'));
+}
+async function runPrint(asPdf) {
+  if ($('print').disabled) return;
+  if (asPdf) {
+    $('status').textContent = 'В окне печати выберите «Сохранить как PDF» или «Microsoft Print to PDF», масштаб 100%.';
+  }
+  const imgs = [...$('printRoot').querySelectorAll('img')];
+  await Promise.all(imgs.map(img => img.decode ? img.decode().catch(() => {}) : Promise.resolve()));
+  window.print();
+}
+
+function openBgHelp() {
+  $('bgHelp').hidden = false;
+  $('bgHelpClose').focus();
+}
+function closeBgHelp() {
+  if ($('bgHelp').hidden) return;
+  $('bgHelp').hidden = true;
+  $('bgHelpBtn').focus();
+}
+$('bgHelpBtn').addEventListener('click', openBgHelp);
+$('bgHelpClose').addEventListener('click', closeBgHelp);
+$('bgHelp').addEventListener('click', event => {
+  if (event.target === $('bgHelp')) closeBgHelp();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeBgHelp();
+});
+$('pick').addEventListener('click', () => {
+  $('files').value = '';
+  $('files').click();
+});
+$('files').addEventListener('change', () => {
+  if ($('files').files && $('files').files.length) addFiles($('files').files);
+});
+document.addEventListener('dragover', event => {
+  event.preventDefault();
+  document.body.classList.add('drop-active');
+});
+document.addEventListener('dragleave', event => {
+  if (!event.relatedTarget) document.body.classList.remove('drop-active');
+});
+document.addEventListener('drop', event => {
+  event.preventDefault();
+  document.body.classList.remove('drop-active');
+  const files = event.dataTransfer && event.dataTransfer.files;
+  if (files && files.length) addFiles(files);
+});
+document.addEventListener('paste', event => {
+  const target = event.target;
+  if (target && target.closest && target.closest('input, textarea')) return;
+  const data = event.clipboardData;
+  if (!data) return;
+  const files = imageFilesFromClipboard(data);
+  if (!files.length) return;
+  event.preventDefault();
+  addFiles(files);
+});
+document.querySelector('.mode-chips').addEventListener('click', event => {
+  const btn = event.target.closest('[data-mode]');
+  if (!btn || btn.dataset.mode === state.mode) return;
+  applyModeDefaults(btn.dataset.mode);
+  renderOutput();
+});
+$('sizeChips').addEventListener('click', event => {
+  const btn = event.target.closest('[data-size]');
+  if (!btn) return;
+  state.sizeMode = btn.dataset.size;
+  if (state.sizeMode !== 'custom') {
+    const cm = Number(state.sizeMode) / 10;
+    state.wCm = cm;
+    state.hCm = cm;
+    $('widthCm').value = String(cm).replace('.', ',');
+    $('heightCm').value = String(cm).replace('.', ',');
+  }
+  syncSizeButtons();
+  renderOutput();
+});
+document.querySelector('.zoom-group').addEventListener('click', event => {
+  const btn = event.target.closest('.zoom-btn');
+  if (!btn) return;
+  state.zoom = btn.dataset.zoom;
+  syncZoomButtons();
+  applyScale();
+});
+document.querySelector('.mobile-nav').addEventListener('click', event => {
+  const btn = event.target.closest('[data-pane]');
+  if (!btn) return;
+  state.pane = btn.dataset.pane;
+  syncPane();
+});
+function readCustom(input, key) {
+  const n = parseCm(input.value);
+  if (n == null) return;
+  state[key] = clampCm(n);
+  state.sizeMode = 'custom';
+  syncSizeButtons();
+  renderOutput();
+}
+function commitCustom(input, key) {
+  const n = parseCm(input.value);
+  state[key] = clampCm(n == null ? state[key] : n);
+  state.sizeMode = 'custom';
+  input.value = state[key].toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  syncSizeButtons();
+  renderOutput();
+}
+$('widthCm').addEventListener('input', () => readCustom($('widthCm'), 'wCm'));
+$('heightCm').addEventListener('input', () => readCustom($('heightCm'), 'hCm'));
+$('widthCm').addEventListener('blur', () => commitCustom($('widthCm'), 'wCm'));
+$('heightCm').addEventListener('blur', () => commitCustom($('heightCm'), 'hCm'));
+$('border').addEventListener('change', () => {
+  state.border = $('border').value;
+  $('borderColor').disabled = state.border === 'none';
+  renderOutput();
+});
+$('borderColor').addEventListener('input', () => {
+  state.borderColor = safeColor($('borderColor').value);
+  renderOutput();
+});
+$('showLabels').addEventListener('change', () => {
+  state.showLabels = $('showLabels').checked;
+  renderOutput();
+});
+$('cutLines').addEventListener('change', () => {
+  state.cutLines = $('cutLines').checked;
+  $('cutStyle').disabled = !state.cutLines;
+  renderOutput();
+});
+$('cutStyle').addEventListener('change', () => {
+  state.cutStyle = $('cutStyle').value;
+  renderOutput();
+});
+function bindSelect(id, key, numeric) {
+  $(id).addEventListener('change', () => {
+    state[key] = numeric ? Number($(id).value) : $(id).value;
+    renderOutput();
+  });
+}
+bindSelect('paper', 'paper', false);
+bindSelect('orient', 'orient', false);
+bindSelect('margin', 'margin', true);
+bindSelect('gap', 'gap', true);
+$('gallery').addEventListener('click', event => {
+  const tile = event.target.closest('[data-id]');
+  if (!tile) return;
+  const item = findItem(tile.dataset.id);
+  if (!item) return;
+  if (event.target.closest('.remove')) {
+    URL.revokeObjectURL(item.url);
+    state.items = state.items.filter(entry => entry !== item);
+    $('status').textContent = 'Изображение убрано из набора.';
+    renderGallery();
+    renderOutput();
+    return;
+  }
+  if (event.target.closest('.dec') || event.target.closest('.inc')) {
+    item.copies = normalizeCopies(item.copies + (event.target.closest('.inc') ? 1 : -1));
+    tile.querySelector('.copy-input').value = String(item.copies);
+    renderOutput();
+  }
+});
+$('gallery').addEventListener('input', event => {
+  const tile = event.target.closest('[data-id]');
+  if (!tile) return;
+  const item = findItem(tile.dataset.id);
+  if (!item) return;
+  if (event.target.classList.contains('cap-input')) {
+    item.caption = event.target.value;
+    renderOutput();
+  } else if (event.target.classList.contains('copy-input')) {
+    if (!event.target.value.trim()) return;
+    const n = normalizeCopies(event.target.value);
+    item.copies = n;
+    if (Number(event.target.value) > 30) event.target.value = '30';
+    renderOutput();
+  }
+});
+$('gallery').addEventListener('focusout', event => {
+  if (!event.target.classList.contains('copy-input')) return;
+  const tile = event.target.closest('[data-id]');
+  const item = tile && findItem(tile.dataset.id);
+  if (!item) return;
+  item.copies = normalizeCopies(event.target.value);
+  event.target.value = String(item.copies);
+  renderOutput();
+});
+$('reset').addEventListener('click', () => {
+  const ok = window.confirm('Очистить все изображения и вернуть настройки к начальным? Вернуть их будет нельзя.');
+  if (!ok) return;
+  resetAll();
+});
+$('print').addEventListener('click', () => runPrint(false));
+$('savePdf').addEventListener('click', () => runPrint(true));
+let scaleTimer = 0;
+function onViewportChange() {
+  clearTimeout(scaleTimer);
+  scaleTimer = setTimeout(() => {
+    if (!window.matchMedia('(max-width: 1024px)').matches) {
+      state.pane = 'sheet';
+      syncPane();
+    }
+    applyScale();
+  }, 80);
+}
+window.addEventListener('resize', onViewportChange);
+window.addEventListener('orientationchange', () => setTimeout(onViewportChange, 120));
+syncModeButtons();
+syncFormControls();
+syncSizeButtons();
+syncZoomButtons();
+syncPane();
+syncPrimaryActions();
+renderGallery();
+renderOutput();
+requestAnimationFrame(() => requestAnimationFrame(applyScale));
+</script>
+</body>
+</html>

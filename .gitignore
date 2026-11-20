@@ -1,0 +1,24 @@
+# Резервные копии HTML
+*_backup.html
+*_backup_*.html
+*backup*.html
+
+# Ранний прототип (только локально)
+Библиотека_АДК_прототип.html
+
+# Временные и служебные файлы
+_tmp*
+*.tmp
+*.temp
+*.log
+Thumbs.db
+Desktop.ini
+.DS_Store
+__pycache__/
+*.pyc
+
+# Служебные папки редакторов
+.cursor/
+.vscode/
+*.swp
+*~
