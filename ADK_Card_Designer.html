@@ -1953,6 +1953,30 @@ function zipCrc32(data) {
   }
   return (crc^-1)>>>0;
 }
+// Preserve physical print size in PNG files (180 DPI = 7087 pixels/metre).
+// The pHYs chunk goes directly after IHDR and uses the PNG big-endian CRC format.
+function pngWithPrintDensity(bytes) {
+  if (bytes.length < 33 || bytes[0] !== 137 || bytes[1] !== 80 ||
+      bytes[2] !== 78 || bytes[3] !== 71) throw Error('Некорректный PNG.');
+  const header = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  const ihdrLength = header.getUint32(8);
+  if (ihdrLength !== 13 ||
+      String.fromCharCode(...bytes.subarray(12,16)) !== 'IHDR') throw Error('Некорректный заголовок PNG.');
+  const insertAt = 8 + 12 + ihdrLength;
+  const chunk = new Uint8Array(21);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0,9);
+  chunk.set([112,72,89,115],4); // pHYs
+  view.setUint32(8,7087);
+  view.setUint32(12,7087);
+  chunk[16]=1; // pixels per metre
+  view.setUint32(17,zipCrc32(chunk.subarray(4,17)));
+  const result=new Uint8Array(bytes.length+chunk.length);
+  result.set(bytes.subarray(0,insertAt));
+  result.set(chunk,insertAt);
+  result.set(bytes.subarray(insertAt),insertAt+chunk.length);
+  return result;
+}
 function makeZip(files) {
   const encoder=new TextEncoder(), parts=[], central=[];
   let offset=0;
@@ -1989,7 +2013,7 @@ async function buildPngFile() {
       canvas=renderExportPage(pages[i],plan,decoded.images);
       const blob=await canvasAsBlob(canvas,'image/png');
       files.push({name:'ADK-list-'+String(i+1).padStart(2,'0')+'.png',
-        bytes:new Uint8Array(await blob.arrayBuffer())});
+        bytes:pngWithPrintDensity(new Uint8Array(await blob.arrayBuffer()))});
     } finally {
       if (canvas) { canvas.width=0;canvas.height=0; }
       decoded.release();
@@ -2089,7 +2113,8 @@ async function exportAction(mode) {
     } else {
       downloadExportFile(file);
       $('status').textContent=mode==='pdf'?'PDF скачан. Для печати используйте масштаб 100%.':
-        (file.type==='application/zip'?'Листы PNG скачаны одним ZIP-архивом.':'Лист PNG скачан.');
+        (file.type==='application/zip'?'Листы PNG скачаны одним ZIP-архивом.':'Лист PNG скачан.') +
+        ' Для точного размера печатайте PDF в масштабе 100%.';
     }
   } catch(error) {
     $('status').textContent='Не удалось создать файл: '+(error && error.message?error.message:'неизвестная ошибка');
