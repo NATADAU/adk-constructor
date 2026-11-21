@@ -415,6 +415,26 @@ try {
     assert.ok(result.size>1000);
     assert.equal(result.signature,'%PDF');
   });
+  await test('P1-2f: large collections show a gentle warning', async () => {
+    const result=await page.evaluate(() => {
+      const item=state.items[0], before=item.copies;
+      const itemsBefore=state.items;
+      try {
+        state.items=Array.from({length:41},(_,i)=>({...item,id:'warning'+i,copies:1}));
+        renderOutput();
+        const visible=!document.querySelector('#largeSetNotice').hidden;
+        const message=document.querySelector('#largeSetNotice').textContent;
+        return {visible,message};
+      } finally {
+        state.items=itemsBefore;
+        item.copies=before;
+        renderOutput();
+      }
+    });
+    assert.equal(result.visible,true);
+    assert.match(result.message,/41 изображений/);
+    assert.equal(await page.locator('#largeSetNotice').isVisible(),false);
+  });
   await test('P1-2e: unsupported browsers never prebuild PDF and show a helpful message', async () => {
     await page.evaluate(() => {
       window.__oldPdfBuilder = buildPdfFile;
