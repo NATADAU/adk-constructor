@@ -110,7 +110,30 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .help-link:hover { color: var(--clp-teal-dark); }
 .help-link svg { flex-shrink: 0; color: var(--clp-orange); }
 .hint { color: var(--clp-muted); margin: 0; font-size: 14px; }
-.status { min-height: 1.2em; margin: 0; color: var(--clp-muted); font-size: 13px; }
+.status {
+  position: fixed;
+  z-index: 80;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+  padding: 12px 16px;
+  border: 1px solid var(--clp-teal);
+  border-radius: 12px;
+  background: var(--clp-surface);
+  color: var(--clp-text);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .14);
+  font-size: 14px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.status:empty { display: none; }
+.status[data-level="error"] {
+  border-color: #c33;
+  background: #fff2f2;
+  color: #822;
+}
+@media print { .status { display: none !important; } }
 .popover {
   position: fixed;
   inset: 0;
@@ -591,6 +614,8 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
     </div>
   </header>
 
+  <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></p>
+
   <nav class="mobile-nav" aria-label="Разделы">
     <button type="button" class="nav-btn active" data-pane="sheet">Лист</button>
     <button type="button" class="nav-btn" data-pane="settings">Настройки</button>
@@ -600,7 +625,6 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   <div class="work">
     <div class="left-col">
       <section class="settings pane pane-settings" id="settings" aria-label="Настройки">
-        <p id="status" class="status" role="status"></p>
         <div class="mode-block">
           <span class="group-title">Что хотите подготовить?</span>
           <div class="chips mode-chips" role="group" aria-label="Режим работы">
@@ -1415,6 +1439,22 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('cropDi
 function findItem(id) {
   return state.items.find(item => item.id === id);
 }
+// Keep notifications visible on every pane, including the mobile sheet view.
+const statusNode = $('status');
+let statusClearTimer = null;
+const statusObserver = new MutationObserver(() => {
+  clearTimeout(statusClearTimer);
+  const message = statusNode.textContent.trim();
+  if (!message) { statusNode.removeAttribute('data-level'); return; }
+  const isError = /не удалось|не получилось|не поддерживает|ошибк|отклон|слишком|неверн|неподдерживаем/i.test(message);
+  statusNode.dataset.level = isError ? 'error' : 'info';
+  // Errors and instructions remain until replaced by the next status message.
+  if (!isError && !/…|подготавлива|добавляю/i.test(message)) {
+    statusClearTimer = setTimeout(() => { statusNode.textContent = ''; }, 4000);
+  }
+});
+statusObserver.observe(statusNode, { childList: true, characterData: true, subtree: true });
+
 async function addFiles(list) {
   const files = [...list];
   if (!files.length) return;
