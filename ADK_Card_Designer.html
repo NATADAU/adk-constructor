@@ -2013,7 +2013,11 @@ let sharePdfRevision=0;
 let sharePdfTimer=0;
 // File sharing is not supported in every browser. Checking with a tiny dummy
 // PDF avoids decoding every photo just to discover that sharing is unavailable.
+function isEmbeddedBrowser() {
+  return /Telegram|Instagram|FBAN|FBAV|VKBrowser|VKontakte|VKApp/i.test(navigator.userAgent || '');
+}
 function supportsFileSharing() {
+  if (isEmbeddedBrowser()) return false;
   if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false;
   try {
     return navigator.canShare({
@@ -2050,8 +2054,12 @@ function queueSharePdf() {
 }
 async function exportAction(mode) {
   if(exportBusy || !state.items.length) return;
+  if(mode==='share' && isEmbeddedBrowser()) {
+    $('status').textContent='Откройте страницу в Safari или обычном браузере и нажимайте «Поделиться» внутри конструктора, а не в меню браузера.';
+    return;
+  }
   if(mode==='share' && !supportsFileSharing()) {
-    $('status').textContent='Этот браузер не поддерживает отправку PDF. Нажмите «Скачать PDF» и отправьте файл из «Файлов».';
+    $('status').textContent='Этот браузер не поддерживает отправку PDF. Нажмите «Скачать PDF» и отправьте файл из «Файлов». Используйте кнопку «Поделиться» внутри конструктора.';
     return;
   }
   if(mode==='share' && !sharePdfCache) {
@@ -2069,7 +2077,7 @@ async function exportAction(mode) {
     if(mode==='share'){
       if(navigator.canShare && navigator.canShare({files:[file]}) && navigator.share){
         try {
-          await navigator.share({files:[file],title:'Карточки АДК'});
+          await navigator.share({files:[file]});
           $('status').textContent='Открыто меню отправки файла.';
         } catch(error) {
           if(error.name==='AbortError'){ $('status').textContent='Отправка отменена.'; }
