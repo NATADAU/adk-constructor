@@ -434,8 +434,8 @@ try {
         renderOutput();
       }
     });
-    assert.match(result.before,/translate\\(0%, 30%\\)/);
-    assert.match(result.after,/translate\\(0%, 0%\\)/);
+    assert.ok(result.before.includes('translate(0%, 30%)'),result.before);
+    assert.ok(result.after.includes('translate(0%, 0%)'),result.after);
     assert.equal(result.savedY,30);
   });
   await test('P1-2f: large collections show a gentle warning', async () => {
