@@ -714,6 +714,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
     <section class="panel preview-panel pane pane-sheet" id="printPanel">
       <p id="summary" class="summary" aria-live="polite">Добавьте изображения</p>
       <p id="warn" class="warn" hidden></p>
+      <p id="largeSetNotice" class="hint" hidden></p>
       <div class="sheet-back"><button type="button" class="btn secondary" id="backToImages">← К изображениям</button></div>
       <div class="sheet-quantity" id="sheetQuantity" hidden aria-label="Количество копий на листе">
         <label class="sheet-quantity-picker" for="sheetImageSelect">Изображение
@@ -1140,6 +1141,13 @@ function renderOutput() {
       ? total + ' ' + itemWord(total) + ' · ' + pageList.length + ' ' + sheetWord(pageList.length) + ' · ' + paperName
       : 'Добавьте изображения';
   }
+  const largeSet = !plan.error && (pageList.length > 20 || state.items.length > 40);
+  const largeSetNotice = $('largeSetNotice');
+  largeSetNotice.hidden = !largeSet;
+  largeSetNotice.textContent = largeSet
+    ? 'Большой набор (' + state.items.length + ' изображений, ' + pageList.length +
+      ' листов). На телефоне подготовка файлов может занять больше времени.'
+    : '';
   summary.dataset.cardW = String(plan.card.w);
   summary.dataset.cardH = String(plan.card.h);
   summary.dataset.cols = String(plan.cols);
