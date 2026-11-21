@@ -33,7 +33,7 @@ function extract(name) {
   throw new Error('Unterminated ' + name);
 }
 const state = { paper:'a4', orient:'portrait',sizeMode:'50',wCm:5,hCm:5,margin:10,gap:3,
-  border:'normal',borderColor:'#019BAB',cutLines:false,cutStyle:'dashed',showLabels:true,
+  border:'normal',borderColor:'#019BAB',cutLines:false,showLabels:true,
   mode:'cards',items:[] };
 const ctx = createContext({ state, console });
 for (const name of ['normalizeCopies','pageMm','cardMm','borderWidth','cmLabel','layoutPlan',
