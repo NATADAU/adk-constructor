@@ -361,6 +361,48 @@ try {
     assert.notEqual(shared?.activated,false,'Share must be called synchronously from the user tap');
     assert.ok(shared.size>1000);
   });
+  await test('P1-2b: rapid caption changes cause only one delayed PDF build', async () => {
+    await page.waitForFunction(() => !!sharePdfCache && !document.querySelector('#sharePdf').disabled);
+    await page.evaluate(() => {
+      window.__oldPdfBuilder = buildPdfFile;
+      window.__pdfBuildCount = 0;
+      buildPdfFile = async function() {
+        window.__pdfBuildCount++;
+        return window.__oldPdfBuilder();
+      };
+      for (let i = 0; i < 10; i++) {
+        state.items[0].caption = 'Изменение ' + i;
+        renderOutput();
+      }
+    });
+    await page.waitForFunction(() => window.__pdfBuildCount === 1, {timeout:30000});
+    await page.waitForFunction(() => !!sharePdfCache && !document.querySelector('#sharePdf').disabled, {timeout:30000});
+    const count = await page.evaluate(() => {
+      const count = window.__pdfBuildCount;
+      buildPdfFile = window.__oldPdfBuilder;
+      delete window.__oldPdfBuilder;
+      return count;
+    });
+    assert.equal(count,1);
+  });
+  await test('P1-2b: PDF download reuses the prepared PDF', async () => {
+    const result = await page.evaluate(async () => {
+      const originalBuild = buildPdfFile, originalDownload = downloadExportFile;
+      let calls = 0, downloaded = null;
+      try {
+        buildPdfFile = async () => { calls++; return originalBuild(); };
+        downloadExportFile = file => { downloaded = {name:file.name,size:file.size,same:file===sharePdfCache}; };
+        await exportAction('pdf');
+        return {calls,downloaded};
+      } finally {
+        buildPdfFile = originalBuild;
+        downloadExportFile = originalDownload;
+      }
+    });
+    assert.equal(result.calls,0);
+    assert.equal(result.downloaded?.same,true);
+    assert.equal(result.downloaded?.name,'ADK-kartochki.pdf');
+  });
   await test('Browser can generate a print CSS PDF', async () => {
     const pdf=await page.pdf({printBackground:true,preferCSSPageSize:true});
     assert.ok(pdf.length>2500);
