@@ -415,6 +415,25 @@ try {
     assert.ok(result.size>1000);
     assert.equal(result.signature,'%PDF');
   });
+  await test('P2-1: gallery crop ratio updates after resizing without replacing caption field', async () => {
+    const result=await page.evaluate(() => {
+      const old={sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm};
+      const tile=document.querySelector('#gallery .tile'),field=tile.querySelector('.cap-input');
+      try {
+        state.sizeMode='custom';state.wCm=10;state.hCm=5;renderOutput();
+        const wide=tile.querySelector('.tile-crop-viewport').style.getPropertyValue('--crop-ratio');
+        state.wCm=5;state.hCm=10;renderOutput();
+        const narrow=tile.querySelector('.tile-crop-viewport').style.getPropertyValue('--crop-ratio');
+        const plan=layoutPlan(),v=cropViewport(plan,captionShown(state.items[0]));
+        return {wide:Number(wide),narrow:Number(narrow),expected:v.w/v.h,fieldSame:field===tile.querySelector('.cap-input')};
+      } finally {
+        Object.assign(state,old);renderOutput();
+      }
+    });
+    assert.ok(result.wide>result.narrow,JSON.stringify(result));
+    assert.ok(Math.abs(result.narrow-result.expected)<1e-5,JSON.stringify(result));
+    assert.equal(result.fieldSame,true);
+  });
   await test('P1-4b: clipped captions trigger gallery and crop editor warnings', async () => {
     const result = await page.evaluate(() => {
       const item=state.items[0], oldCaption=item.caption, oldLabels=state.showLabels;
