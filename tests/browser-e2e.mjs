@@ -176,7 +176,7 @@ try {
   await test('Incomplete bottom row has no phantom cells; print and PDF use same grid', async () => {
     const result=await page.evaluate(()=>{
       const plan=layoutPlan(), six=gridSegments(6,plan), seven=gridSegments(7,plan);
-      const lastRow=7-plan.cols;
+      const lastRow=7-(Math.ceil(7/plan.cols)-1)*plan.cols;
       const bottom=seven.filter(s=>s.direction==='horizontal').at(-1);
       const penultimate=seven.filter(s=>s.direction==='horizontal').at(-2);
       let drawn=0;
