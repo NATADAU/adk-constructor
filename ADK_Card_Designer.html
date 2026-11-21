@@ -2040,6 +2040,10 @@ let sharePdfTimer=0;
 function isEmbeddedBrowser() {
   return /Telegram|Instagram|FBAN|FBAV|VKBrowser|VKontakte|VKApp/i.test(navigator.userAgent || '');
 }
+function isIosDevice() {
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent || '') ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
 function supportsFileSharing() {
   if (isEmbeddedBrowser()) return false;
   if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false;
@@ -2057,6 +2061,7 @@ function queueSharePdf() {
   clearTimeout(sharePdfTimer);
   const enabled=state.items.length>0 && !layoutPlan().error && slots().length>0;
   const canShareFiles = supportsFileSharing();
+  $('savePdf').textContent = isIosDevice() ? 'Сохранить PDF' : 'Скачать PDF';
   $('sharePdf').disabled=!enabled || (canShareFiles && exportBusy);
   $('sharePdf').textContent=enabled && canShareFiles?'Готовим PDF…':'Поделиться';
   if(!enabled || !canShareFiles) return;
@@ -2078,6 +2083,23 @@ function queueSharePdf() {
 }
 async function exportAction(mode) {
   if(exportBusy || !state.items.length) return;
+  // iOS may open a downloaded blob: PDF as a web page. Sharing that page
+  // from Safari/Telegram sends its unusable temporary URL, not the PDF.
+  // Use a prepared File and the native share sheet for both Save and Share.
+  if(mode==='pdf' && isIosDevice()) {
+    if(isEmbeddedBrowser()) {
+      $('status').textContent='Для сохранения PDF откройте конструктор в Safari, затем нажмите «Сохранить PDF» и выберите «Сохранить в Файлы».';
+      return;
+    }
+    if(!supportsFileSharing()) {
+      $('status').textContent='Этот браузер не может сохранить PDF как файл. Откройте конструктор в Safari и используйте «Сохранить PDF» → «Сохранить в Файлы».';
+      return;
+    }
+    if(!sharePdfCache) {
+      $('status').textContent='PDF ещё подготавливается. Повторите нажатие «Сохранить PDF», когда станет доступна кнопка «Поделиться».';
+      return;
+    }
+  }
   if(mode==='share' && isEmbeddedBrowser()) {
     $('status').textContent='Откройте страницу в Safari или обычном браузере и нажимайте «Поделиться» внутри конструктора, а не в меню браузера.';
     return;
@@ -2098,7 +2120,18 @@ async function exportAction(mode) {
     // Reuse an already prepared, current PDF for downloads as well as sharing.
     const file=mode==='share'?sharePdfCache:
       (mode==='png'?await buildPngFile():(sharePdfCache || await buildPdfFile()));
-    if(mode==='share'){
+    if(mode==='pdf' && isIosDevice()) {
+      // No await or blob: navigation before the share call: required by iOS.
+      try {
+        $('status').textContent='В системном меню выберите «Сохранить в Файлы» либо отправьте PDF как документ.';
+        await navigator.share({files:[file]});
+        $('status').textContent='Действие с PDF завершено. Файл можно найти в выбранном приложении или папке «Файлы».';
+      } catch(error) {
+        $('status').textContent=error?.name==='AbortError'
+          ? 'Сохранение PDF отменено.'
+          : 'Не удалось открыть сохранение PDF. Откройте конструктор в Safari и попробуйте ещё раз.';
+      }
+    } else if(mode==='share'){
       if(navigator.canShare && navigator.canShare({files:[file]}) && navigator.share){
         try {
           await navigator.share({files:[file]});
