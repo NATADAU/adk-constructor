@@ -1551,6 +1551,7 @@ async function addFiles(list) {
 }
 function resetAll() {
   state.items.forEach(item => URL.revokeObjectURL(item.url));
+  clearExportBitmapCache();
   state.items = [];
   selectedSheetItemId = null;
   state.sizeMode = '50';
@@ -1669,14 +1670,48 @@ async function loadExportImage(url) {
   if (!img.naturalWidth || !img.naturalHeight) throw Error('Не удалось открыть изображение.');
   return img;
 }
-async function prepareExportImages(pages) {
-  const unique = new Map();
-  for (const items of pages) for (const item of items) {
-    if (!unique.has(item.url)) unique.set(item.url, loadExportImage(item.url));
+// Keep only a few decoded images between exports. Others are released after each page.
+const EXPORT_BITMAP_CACHE_LIMIT = 4;
+const exportBitmapCache = new Map();
+function clearExportBitmapCache(url = null) {
+  for (const [key, bitmap] of exportBitmapCache) {
+    if (url !== null && key !== url) continue;
+    bitmap.close();
+    exportBitmapCache.delete(key);
   }
-  const resolved = new Map();
-  for (const [url, pending] of unique) resolved.set(url, await pending);
-  return resolved;
+}
+async function decodeExportImage(item) {
+  if (exportBitmapCache.has(item.url)) return {image:exportBitmapCache.get(item.url),temporary:false};
+  let image;
+  if (typeof createImageBitmap === 'function' && item.url.startsWith('blob:')) {
+    const response = await fetch(item.url);
+    if (!response.ok) throw Error('Не удалось открыть изображение.');
+    image = await createImageBitmap(await response.blob());
+  } else {
+    image = await loadExportImage(item.url);
+  }
+  if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap &&
+      exportBitmapCache.size < EXPORT_BITMAP_CACHE_LIMIT) {
+    exportBitmapCache.set(item.url, image);
+    return {image,temporary:false};
+  }
+  return {image,temporary:true};
+}
+async function prepareExportImages(pageItems) {
+  const images = new Map(), temporary = [];
+  try {
+    for (const item of pageItems) {
+      if (images.has(item.url)) continue;
+      const decoded = await decodeExportImage(item);
+      images.set(item.url, decoded.image);
+      if (decoded.temporary && typeof ImageBitmap !== 'undefined' &&
+          decoded.image instanceof ImageBitmap) temporary.push(decoded.image);
+    }
+    return {images,release:() => temporary.forEach(bitmap=>bitmap.close())};
+  } catch (error) {
+    temporary.forEach(bitmap=>bitmap.close());
+    throw error;
+  }
 }
 function drawExportCrop(ctx, item, plan, x, y, image, dpi) {
   const area = exportCropArea(plan, item, x, y);
@@ -1685,8 +1720,9 @@ function drawExportCrop(ctx, item, plan, x, y, image, dpi) {
   const zoom = item.crop && Number.isFinite(item.crop.zoom) ? item.crop.zoom : 1;
   const dx = item.crop && Number.isFinite(item.crop.x) ? item.crop.x : 0;
   const dy = item.crop && Number.isFinite(item.crop.y) ? item.crop.y : 0;
-  const fit = Math.min(w / image.naturalWidth, h / image.naturalHeight);
-  const iw = image.naturalWidth * fit * zoom, ih = image.naturalHeight * fit * zoom;
+  const imageW = image.naturalWidth || image.width, imageH = image.naturalHeight || image.height;
+  const fit = Math.min(w / imageW, h / imageH);
+  const iw = imageW * fit * zoom, ih = imageH * fit * zoom;
   ctx.save();
   ctx.beginPath(); ctx.rect(sx,sy,w,h); ctx.clip();
   ctx.drawImage(image, sx+(w-iw)/2+dx/100*w, sy+(h-ih)/2+dy/100*h, iw, ih);
@@ -1788,16 +1824,18 @@ function bytesFromBase64(base64) {
 async function buildPdfFile() {
   const plan=layoutPlan();
   if(plan.error || !state.items.length) throw Error(plan.error || 'Сначала добавьте изображения.');
-  const pages=splitPages(plan), images=await prepareExportImages(pages);
-  const jpegs=[];
+  const pages=splitPages(plan), jpegs=[];
   for(const pageItems of pages) {
-    const canvas=renderExportPage(pageItems,plan,images);
+    const decoded=await prepareExportImages(pageItems);
+    let canvas;
     try {
+      canvas=renderExportPage(pageItems,plan,decoded.images);
       const blob=await canvasAsBlob(canvas,'image/jpeg',.9);
       const jpeg=new Uint8Array(await blob.arrayBuffer());
       jpegs.push({width:canvas.width,height:canvas.height,bytes:jpeg});
     } finally {
-      canvas.width=0;canvas.height=0;
+      if (canvas) { canvas.width=0;canvas.height=0; }
+      decoded.release();
     }
     // Give mobile browsers a chance to process input between PDF pages.
     await new Promise(resolve=>requestAnimationFrame(resolve));
@@ -1841,13 +1879,19 @@ function makeZip(files) {
 async function buildPngFile() {
   const plan=layoutPlan();
   if(plan.error || !state.items.length) throw Error(plan.error || 'Сначала добавьте изображения.');
-  const pages=splitPages(plan),images=await prepareExportImages(pages),files=[];
+  const pages=splitPages(plan),files=[];
   for(let i=0;i<pages.length;i++){
-    const canvas=renderExportPage(pages[i],plan,images);
-    const blob=await canvasAsBlob(canvas,'image/png');
-    files.push({name:'ADK-list-'+String(i+1).padStart(2,'0')+'.png',
-      bytes:new Uint8Array(await blob.arrayBuffer())});
-    canvas.width=0;canvas.height=0;
+    const decoded=await prepareExportImages(pages[i]);
+    let canvas;
+    try {
+      canvas=renderExportPage(pages[i],plan,decoded.images);
+      const blob=await canvasAsBlob(canvas,'image/png');
+      files.push({name:'ADK-list-'+String(i+1).padStart(2,'0')+'.png',
+        bytes:new Uint8Array(await blob.arrayBuffer())});
+    } finally {
+      if (canvas) { canvas.width=0;canvas.height=0; }
+      decoded.release();
+    }
   }
   if(files.length===1)return new File([files[0].bytes],files[0].name,{type:'image/png'});
   return new File([makeZip(files)],'ADK-listy-PNG.zip',{type:'application/zip'});
@@ -2065,6 +2109,7 @@ $('gallery').addEventListener('click', event => {
   if (!item) return;
   if (event.target.closest('.remove')) {
     URL.revokeObjectURL(item.url);
+    clearExportBitmapCache(item.url);
     state.items = state.items.filter(entry => entry !== item);
     $('status').textContent = 'Изображение убрано из набора.';
     renderGallery();
