@@ -1880,7 +1880,7 @@ function queueSharePdf() {
       $('sharePdf').disabled=true;
       $('status').textContent='Не удалось подготовить PDF для отправки: '+(error?.message||'ошибка');
     }
-  },300);
+  },900);
 }
 async function exportAction(mode) {
   if(exportBusy || !state.items.length) return;
@@ -1893,7 +1893,9 @@ async function exportAction(mode) {
   controls.forEach(id=>{$(id).disabled=true;$(id).classList.add('export-busy');});
   $('status').textContent='Подготавливаю файл…';
   try {
-    const file=mode==='share'?sharePdfCache:(mode==='png'?await buildPngFile():await buildPdfFile());
+    // Reuse an already prepared, current PDF for downloads as well as sharing.
+    const file=mode==='share'?sharePdfCache:
+      (mode==='png'?await buildPngFile():(sharePdfCache || await buildPdfFile()));
     if(mode==='share'){
       if(navigator.canShare && navigator.canShare({files:[file]}) && navigator.share){
         try {
