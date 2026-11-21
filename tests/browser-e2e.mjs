@@ -449,6 +449,19 @@ try {
     assert.ok(result.size>1000);
     assert.equal(result.signature,'%PDF');
   });
+  await test('P2-3b: unchanged summary does not trigger redundant live announcements', async () => {
+    const changes=await page.evaluate(async () => {
+      const summary=document.querySelector('#summary'),records=[];
+      const observer=new MutationObserver(entries=>records.push(...entries));
+      observer.observe(summary,{childList:true,characterData:true,subtree:true});
+      renderOutput();
+      renderOutput();
+      await Promise.resolve();
+      observer.disconnect();
+      return records.length;
+    });
+    assert.equal(changes,0);
+  });
   await test('P2-1: gallery crop ratio updates after resizing without replacing caption field', async () => {
     const result=await page.evaluate(() => {
       const old={sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm};
