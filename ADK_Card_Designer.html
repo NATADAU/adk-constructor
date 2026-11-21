@@ -1128,6 +1128,7 @@ function renderOutput() {
   const plan = layoutPlan();
   const key = structureKey(plan);
   updateCaptionWarnings(plan);
+  syncGalleryCropPreviews(plan);
   $('pageCss').textContent = '@page{size:' + plan.page.w + 'mm ' + plan.page.h + 'mm;margin:0;}';
   $('sizeNow').textContent = 'На бумаге: ' + cmLabel(plan.card.w) + ' × ' + cmLabel(plan.card.h) + ' см';
   if (key === lastKey && !plan.error && !captionsNeedRebuild()) {
@@ -1285,6 +1286,22 @@ function renderGallery() {
   }
   state.items.forEach(item => gallery.append(tileElement(item)));
   syncPrimaryActions();
+}
+// Update existing thumbnails in place so typing in a caption never loses focus.
+function syncGalleryCropPreviews(plan) {
+  document.querySelectorAll('#gallery .tile').forEach(tile => {
+    const item = findItem(tile.dataset.id);
+    if (!item) return;
+    const viewport = cropViewport(plan,captionShown(item));
+    const frame = tile.querySelector('.tile-crop-viewport');
+    const img = frame && frame.querySelector('img');
+    if (!frame || !img) return;
+    frame.style.setProperty('--crop-ratio',String(viewport.w/viewport.h));
+    const crop = boundedItemCrop(item,plan);
+    img.style.transform = crop
+      ? 'translate(' + crop.x + '%, ' + crop.y + '%) scale(' + crop.zoom + ')'
+      : '';
+  });
 }
 function tileElement(item) {
   const tile = document.createElement('article');
