@@ -498,6 +498,8 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.caption-warning { margin: 4px 0; color: #a13b29; font-size: 12px; line-height: 1.35; }
+.caption-warning[hidden] { display: none; }
 .drop-active .topbar,
 .drop-active .left-col,
 .drop-active .preview-panel { outline: 2px dashed var(--clp-teal); outline-offset: 2px; }
@@ -778,6 +780,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   <div id="cropStage" class="crop-stage"><img id="cropImage" alt="Изображение для кадрирования"></div>
   <label class="crop-controls">Масштаб <input id="cropZoom" type="range" min="0.3" max="3" step="0.05" value="1"><span id="cropZoomValue">100%</span></label>
   <label class="tile-label">Подпись на карточке<input id="cropCaption" class="control" type="text" maxlength="80" placeholder="Введите подпись"></label>
+  <p class="caption-warning" id="cropCaptionWarning" hidden>Подпись не помещается полностью — сократите текст или увеличьте карточку.</p>
   <p style="margin:0;font-size:13px">Уменьшайте изображение до 30% или увеличивайте до 300%. При уменьшении вокруг картинки остаётся свободное место. Исходный файл не изменится.</p>
   <div class="crop-actions"><button type="button" id="cropReset">Сбросить</button><button type="button" id="cropCancel">Отмена</button><button type="button" id="cropApply" class="crop-apply">Применить</button></div>
  </div>
@@ -1124,6 +1127,7 @@ function renderOutput() {
   syncSheetQuantity();
   const plan = layoutPlan();
   const key = structureKey(plan);
+  updateCaptionWarnings(plan);
   $('pageCss').textContent = '@page{size:' + plan.page.w + 'mm ' + plan.page.h + 'mm;margin:0;}';
   $('sizeNow').textContent = 'На бумаге: ' + cmLabel(plan.card.w) + ' × ' + cmLabel(plan.card.h) + ' см';
   if (key === lastKey && !plan.error && !captionsNeedRebuild()) {
@@ -1313,6 +1317,10 @@ function tileElement(item) {
   input.placeholder = 'Необязательно';
   input.value = item.caption;
   label.append(input);
+  const captionWarning = document.createElement('p');
+  captionWarning.className = 'caption-warning';
+  captionWarning.hidden = true;
+  captionWarning.textContent = 'Подпись не помещается полностью — сократите текст или увеличьте карточку.';
   const actions = document.createElement('div');
   actions.className = 'tile-actions';
   const cropBtn = document.createElement('button');
@@ -1326,7 +1334,7 @@ function tileElement(item) {
   remove.textContent = 'Удалить изображение';
   remove.setAttribute('aria-label','Удалить изображение из набора');
   actions.append(cropBtn,remove);
-  tile.append(frame, label, actions);
+  tile.append(frame, label, captionWarning, actions);
   return tile;
 }
 let cropItem = null;
@@ -1335,6 +1343,32 @@ function cropViewport(plan, captionVisible) {
   const innerInset = 2 * borderWidth() + 2.4;
   const capHeight = captionVisible ? Math.max(6, Math.min(12, plan.card.h * .2)) : 0;
   return { w: Math.max(1, plan.card.w - innerInset), h: Math.max(1, plan.card.h - innerInset - capHeight) };
+}
+// Measure captions with the same text wrapping and width as PDF export.
+const captionMeasureCanvas = document.createElement('canvas');
+function captionOverflows(item, plan, forceVisible = false) {
+  if (!item.caption || !item.caption.trim() || (!forceVisible && !captionShown(item))) return false;
+  const large = plan.card.h >= 70;
+  const capH = Math.max(6, Math.min(12, plan.card.h * .2));
+  const fontMm = capH * (large ? .34 : .46);
+  const width = exportPixels(plan.card.w - 2*borderWidth() - 2.8, 96);
+  const ctx = captionMeasureCanvas.getContext('2d');
+  if (!ctx || width <= 0) return false;
+  ctx.font = '700 ' + exportPixels(fontMm, 96) + 'px Arial, sans-serif';
+  const maxLines = large ? Math.max(1, Math.floor((capH-1)/(fontMm*1.15))) : 1;
+  const lines = wrapExportCaption(ctx,item.caption,width,maxLines);
+  return lines.join(' ') !== item.caption.trim().replace(/\\s+/g,' ');
+}
+function updateCaptionWarnings(plan) {
+  document.querySelectorAll('#gallery .tile').forEach(tile => {
+    const item = findItem(tile.dataset.id);
+    const notice = tile.querySelector('.caption-warning');
+    if (item && notice) notice.hidden = !captionOverflows(item,plan);
+  });
+  if (cropItem) {
+    const draft = {...cropItem, caption:$('cropCaption').value};
+    $('cropCaptionWarning').hidden = !captionOverflows(draft,plan,true);
+  }
 }
 function cropPanBounds(viewW, viewH, imageW, imageH, zoom) {
   if (!(viewW > 0 && viewH > 0 && imageW > 0 && imageH > 0 && zoom > 0)) return { x: 0, y: 0 };
@@ -1380,6 +1414,7 @@ function openCrop(item) {
   cropItem = item;
   cropDraft = { ...(item.crop || { zoom: 1, x: 0, y: 0 }) };
   $('cropCaption').value = item.caption;
+  updateCaptionWarnings(layoutPlan());
   $('cropImage').src = item.url;
   $('cropDialog').hidden = false;
   document.body.style.overflow = 'hidden';
@@ -1410,7 +1445,7 @@ $('cropApply').addEventListener('click', () => {
   syncPane();
 });
 $('cropZoom').addEventListener('input', e => { cropDraft.zoom = Number(e.target.value); drawCrop(); });
-$('cropCaption').addEventListener('input', () => { sizeCropStage(); drawCrop(); });
+$('cropCaption').addEventListener('input', () => { sizeCropStage(); drawCrop(); updateCaptionWarnings(layoutPlan()); });
 window.addEventListener('resize', () => { if (!$('cropDialog').hidden) { sizeCropStage(); drawCrop(); } });
 // Touch has a dedicated non-passive handler: iOS can cancel pointer drags while scrolling.
 let cropDrag = null;
