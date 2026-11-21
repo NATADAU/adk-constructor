@@ -415,6 +415,29 @@ try {
     assert.ok(result.size>1000);
     assert.equal(result.signature,'%PDF');
   });
+  await test('P1-3: resizing a card clamps its visible crop without changing the saved crop', async () => {
+    const result=await page.evaluate(() => {
+      const item=state.items[0], oldCrop=item.crop, oldW=item.w, oldH=item.h;
+      const original={sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm};
+      try {
+        item.w=1600;item.h=900;item.crop={zoom:1.6,x:0,y:30};
+        state.sizeMode='custom';state.wCm=10;state.hCm=5;
+        renderOutput();
+        const before=document.querySelector('#printRoot .pic img').style.transform;
+        state.wCm=5;state.hCm=10;
+        renderOutput();
+        const after=document.querySelector('#printRoot .pic img').style.transform;
+        return {before,after,savedY:item.crop.y};
+      } finally {
+        item.crop=oldCrop;item.w=oldW;item.h=oldH;
+        Object.assign(state,original);
+        renderOutput();
+      }
+    });
+    assert.match(result.before,/translate\\(0%, 30%\\)/);
+    assert.match(result.after,/translate\\(0%, 0%\\)/);
+    assert.equal(result.savedY,30);
+  });
   await test('P1-2f: large collections show a gentle warning', async () => {
     const result=await page.evaluate(() => {
       const item=state.items[0], before=item.copies;
