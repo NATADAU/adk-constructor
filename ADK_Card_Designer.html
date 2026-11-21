@@ -439,13 +439,10 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   z-index: 1;
 }
 .sheet-view .sheet-card.ghost-edge { outline: 1px dashed #B9CDD1; outline-offset: -1px; }
-.cut-guide { position: absolute; pointer-events: none; z-index: 3; overflow: visible; }
-.cut-corner { position: absolute; width: var(--mark-size, 2mm); height: var(--mark-size, 2mm); box-sizing: border-box; border-color: #444; border-style: solid; border-width: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-.cut-guide.dashed .cut-corner { border-style: dashed; }
-.cut-corner.tl { left: calc(-1 * var(--mark-size, 2mm)); top: calc(-1 * var(--mark-size, 2mm)); border-right-width: .25mm; border-bottom-width: .25mm; }
-.cut-corner.tr { right: calc(-1 * var(--mark-size, 2mm)); top: calc(-1 * var(--mark-size, 2mm)); border-left-width: .25mm; border-bottom-width: .25mm; }
-.cut-corner.bl { left: calc(-1 * var(--mark-size, 2mm)); bottom: calc(-1 * var(--mark-size, 2mm)); border-right-width: .25mm; border-top-width: .25mm; }
-.cut-corner.br { right: calc(-1 * var(--mark-size, 2mm)); bottom: calc(-1 * var(--mark-size, 2mm)); border-left-width: .25mm; border-top-width: .25mm; }
+.cut-grid { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.cut-grid-line { position: absolute; box-sizing: border-box; pointer-events: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.cut-grid-line.horizontal { height: 0; border-top: .25mm dashed #555; }
+.cut-grid-line.vertical { width: 0; border-left: .25mm dashed #555; }
 .pic { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; margin: 1.2mm; }
 .pic img {
   position: absolute;
@@ -552,7 +549,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   }
   .print-root .sheet:last-child { break-after: auto; page-break-after: auto; }
   .sheet-card.ghost-edge { outline: none !important; }
-  .cut-corner { border-color: #444 !important; }
+  .cut-grid-line { border-color: #555 !important; }
 }
 .crop-dialog[hidden] { display: none; }
 .crop-dialog { position: fixed; inset: 0; background: rgba(20,35,39,.72); z-index: 999; display: grid; place-items: center; padding: 16px; }
@@ -643,13 +640,8 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
             </div>
             <label class="check"><input id="showLabels" type="checkbox" checked> Показывать подписи</label>
             <div class="cut-row">
-              <label class="check inline"><input id="cutLines" type="checkbox"> Линии разреза</label>
-              <label>Вид линий
-                <select id="cutStyle" class="control">
-                  <option value="solid">Сплошные</option>
-                  <option value="dashed" selected>Пунктирные</option>
-                </select>
-              </label>
+              <label class="check inline"><input id="cutLines" type="checkbox"> Пунктирные линии для разрезания</label>
+              <p class="size-now">Единая сетка без промежутков: одна линия между соседними карточками, без пустых ячеек.</p>
             </div>
           </div>
           <div>
@@ -751,11 +743,11 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 <div id="printRoot" class="print-root" aria-hidden="true"></div>
 <div class="crop-dialog" id="cropDialog" hidden role="dialog" aria-modal="true" aria-labelledby="cropTitle">
  <div class="crop-box">
-  <h2 id="cropTitle">Кадрирование изображения</h2>
+  <h2 id="cropTitle">Размер и положение изображения</h2>
   <div id="cropStage" class="crop-stage"><img id="cropImage" alt="Изображение для кадрирования"></div>
-  <label class="crop-controls">Масштаб <input id="cropZoom" type="range" min="1" max="3" step="0.05" value="1"><span id="cropZoomValue">100%</span></label>
+  <label class="crop-controls">Масштаб <input id="cropZoom" type="range" min="0.3" max="3" step="0.05" value="1"><span id="cropZoomValue">100%</span></label>
   <label class="tile-label">Подпись на карточке<input id="cropCaption" class="control" type="text" maxlength="80" placeholder="Введите подпись"></label>
-  <p style="margin:0;font-size:13px">Увеличьте изображение ползунком, затем перемещайте пальцем. Исходник сохранится.</p>
+  <p style="margin:0;font-size:13px">Уменьшайте изображение до 30% или увеличивайте до 300%. При уменьшении вокруг картинки остаётся свободное место. Исходный файл не изменится.</p>
   <div class="crop-actions"><button type="button" id="cropReset">Сбросить</button><button type="button" id="cropCancel">Отмена</button><button type="button" id="cropApply" class="crop-apply">Применить</button></div>
  </div>
 </div>
@@ -772,7 +764,6 @@ const state = {
   borderColor: '#019BAB',
   showLabels: true,
   cutLines: false,
-  cutStyle: 'dashed',
   paper: 'a4',
   orient: 'portrait',
   margin: 10,
@@ -831,7 +822,7 @@ function layoutPlan() {
   const page = pageMm();
   const card = cardMm();
   const margin = state.margin;
-  const gap = state.gap;
+  const gap = state.cutLines ? 0 : state.gap;
   const innerW = page.w - margin * 2;
   const innerH = page.h - margin * 2;
   const base = { page, card, margin, gap, cols: 0, rows: 0, perSheet: 0, error: '' };
@@ -871,7 +862,7 @@ function structureKey(plan) {
   return [
     state.mode, plan.page.w, plan.page.h, plan.card.w, plan.card.h, plan.margin, plan.gap,
     plan.cols, plan.rows, borderWidth(), safeColor(state.borderColor),
-    state.showLabels ? '1' : '0', state.cutLines ? '1' : '0', state.cutStyle,
+    state.showLabels ? '1' : '0', state.cutLines ? '1' : '0',
     plan.error, ids, caps
   ].join('|');
 }
@@ -918,8 +909,8 @@ function syncFormControls() {
   $('borderColor').disabled = state.border === 'none';
   $('showLabels').checked = state.showLabels;
   $('cutLines').checked = state.cutLines;
-  $('cutStyle').value = state.cutStyle;
-  $('cutStyle').disabled = !state.cutLines;
+  $('gap').disabled = state.cutLines;
+  $('gap').title = state.cutLines ? 'При включённой сетке карточки располагаются вплотную' : '';
 }
 function syncPane() {
   $('dropZone').dataset.pane = state.pane;
@@ -934,12 +925,10 @@ function applyModeDefaults(mode) {
     state.border = 'none';
     state.showLabels = false;
     state.cutLines = true;
-    state.cutStyle = 'dashed';
   } else {
     state.border = 'normal';
     state.showLabels = true;
     state.cutLines = false;
-    state.cutStyle = 'dashed';
   }
   syncModeButtons();
   syncFormControls();
@@ -973,17 +962,41 @@ function buildCard(item, plan, x, y) {
   }
   return card;
 }
-function buildCutGuide(plan, x, y) {
-  const guide = document.createElement('div');
-  guide.className = 'cut-guide' + (state.cutStyle === 'dashed' ? ' dashed' : '');
-  guide.style.left = x + 'mm';
-  guide.style.top = y + 'mm';
-  guide.style.width = plan.card.w + 'mm';
-  guide.style.height = plan.card.h + 'mm';
-  guide.style.setProperty('--mark-size', Math.max(0.6, Math.min(2, plan.gap / 2 - 0.2)) + 'mm');
-  guide.setAttribute('aria-hidden', 'true');
-  ['tl', 'tr', 'bl', 'br'].forEach(pos => { const mark = document.createElement('span'); mark.className = 'cut-corner ' + pos; guide.append(mark); });
-  return guide;
+// Draw a single shared grid, not dashed rectangles around individual cards.
+// The last row stops after its last real card (no empty cells).
+function gridSegments(count, plan) {
+  if (!count) return [];
+  const rows = Math.ceil(count / plan.cols);
+  const last = count - (rows - 1) * plan.cols;
+  const first = Math.min(count, plan.cols);
+  const segments = [];
+  for (let r = 0; r <= rows; r++) {
+    const cells = r === 0 ? first : (r === rows ? last : plan.cols);
+    segments.push({direction:'horizontal', x:plan.margin, y:plan.margin + r*plan.card.h,
+      length:cells*plan.card.w});
+  }
+  const usedCols = Math.min(count,plan.cols);
+  for (let c = 0; c <= usedCols; c++) {
+    const occupiedRows = rows - (rows > 1 && c >= last ? 1 : 0);
+    segments.push({direction:'vertical', x:plan.margin + c*plan.card.w, y:plan.margin,
+      length:occupiedRows*plan.card.h});
+  }
+  return segments;
+}
+function buildCutGrid(count, plan) {
+  const grid = document.createElement('div');
+  grid.className = 'cut-grid';
+  grid.setAttribute('aria-hidden','true');
+  for (const segment of gridSegments(count, plan)) {
+    const line = document.createElement('span');
+    line.className = 'cut-grid-line ' + segment.direction;
+    line.style.left = segment.x + 'mm';
+    line.style.top = segment.y + 'mm';
+    if (segment.direction === 'horizontal') line.style.width = segment.length + 'mm';
+    else line.style.height = segment.length + 'mm';
+    grid.append(line);
+  }
+  return grid;
 }
 function buildSheet(pageItems, plan) {
   const sheet = document.createElement('section');
@@ -996,8 +1009,8 @@ function buildSheet(pageItems, plan) {
     const x = plan.margin + col * (plan.card.w + plan.gap);
     const y = plan.margin + row * (plan.card.h + plan.gap);
     sheet.append(buildCard(item, plan, x, y));
-    if (state.cutLines) sheet.append(buildCutGuide(plan, x, y));
   });
+  if (state.cutLines && pageItems.length) sheet.append(buildCutGrid(pageItems.length,plan));
   return sheet;
 }
 function previewScale(pageWmm, pageHmm) {
@@ -1115,7 +1128,6 @@ function renderOutput() {
   summary.dataset.showLabels = state.showLabels ? '1' : '0';
   summary.dataset.mode = state.mode;
   summary.dataset.cuts = state.cutLines ? '1' : '0';
-  summary.dataset.cutStyle = state.cutStyle;
   setPrintEnabled(!plan.error && total > 0);
   syncPrimaryActions();
   const preview = $('preview');
@@ -1266,8 +1278,8 @@ function tileElement(item) {
   const cropBtn = document.createElement('button');
   cropBtn.type = 'button';
   cropBtn.className = 'crop-btn';
-  cropBtn.textContent = 'Изменить кадр';
-  cropBtn.setAttribute('aria-label','Изменить кадр изображения');
+  cropBtn.textContent = 'Размер и кадр';
+  cropBtn.setAttribute('aria-label','Изменить размер и кадр изображения');
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'remove';
@@ -1285,7 +1297,7 @@ function cropViewport(plan, captionVisible) {
   return { w: Math.max(1, plan.card.w - innerInset), h: Math.max(1, plan.card.h - innerInset - capHeight) };
 }
 function cropPanBounds(viewW, viewH, imageW, imageH, zoom) {
-  if (!(viewW > 0 && viewH > 0 && imageW > 0 && imageH > 0 && zoom >= 1)) return { x: 0, y: 0 };
+  if (!(viewW > 0 && viewH > 0 && imageW > 0 && imageH > 0 && zoom > 0)) return { x: 0, y: 0 };
   const fit = Math.min(viewW / imageW, viewH / imageH);
   return { x: Math.max(0, (imageW * fit * zoom - viewW) / (2 * viewW) * 100),
            y: Math.max(0, (imageH * fit * zoom - viewH) / (2 * viewH) * 100) };
@@ -1588,23 +1600,21 @@ function drawExportBorder(ctx, plan, x, y, dpi) {
   ctx.strokeRect(exportPixels(x+bw/2,dpi),exportPixels(y+bw/2,dpi),
     exportPixels(plan.card.w-bw,dpi),exportPixels(plan.card.h-bw,dpi));
 }
-function drawExportCutMarks(ctx, plan, x, y, dpi) {
-  if (!state.cutLines) return;
-  const m = Math.max(.6,Math.min(2,plan.gap/2-.2));
-  const x1=exportPixels(x,dpi),x2=exportPixels(x+plan.card.w,dpi);
-  const y1=exportPixels(y,dpi),y2=exportPixels(y+plan.card.h,dpi);
-  const t=exportPixels(m,dpi);
+function drawExportCutGrid(ctx, plan, count, dpi) {
+  if (!state.cutLines || !count) return;
   ctx.save();
-  ctx.strokeStyle='#444';
-  ctx.lineWidth=Math.max(1,exportPixels(.25,dpi));
-  ctx.setLineDash(state.cutStyle==='dashed' ? [Math.max(2,exportPixels(.8,dpi)),Math.max(2,exportPixels(.5,dpi))] : []);
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = Math.max(1, exportPixels(.25,dpi));
+  ctx.setLineDash([exportPixels(.8,dpi), exportPixels(.55,dpi)]);
   ctx.beginPath();
-  // Each L-shaped trim mark follows the same geometry as the print CSS.
-  ctx.moveTo(x1,y1-t);ctx.lineTo(x1,y1);ctx.lineTo(x1-t,y1);
-  ctx.moveTo(x2,y1-t);ctx.lineTo(x2,y1);ctx.lineTo(x2+t,y1);
-  ctx.moveTo(x1,y2+t);ctx.lineTo(x1,y2);ctx.lineTo(x1-t,y2);
-  ctx.moveTo(x2,y2+t);ctx.lineTo(x2,y2);ctx.lineTo(x2+t,y2);
-  ctx.stroke();ctx.restore();
+  for (const segment of gridSegments(count,plan)) {
+    const x=exportPixels(segment.x,dpi),y=exportPixels(segment.y,dpi),length=exportPixels(segment.length,dpi);
+    ctx.moveTo(x,y);
+    if (segment.direction === 'horizontal') ctx.lineTo(x+length,y);
+    else ctx.lineTo(x,y+length);
+  }
+  ctx.stroke();
+  ctx.restore();
 }
 function renderExportPage(items, plan, images, dpi=EXPORT_DPI) {
   const canvas = document.createElement('canvas');
@@ -1620,8 +1630,8 @@ function renderExportPage(items, plan, images, dpi=EXPORT_DPI) {
     drawExportCrop(ctx,item,plan,x,y,images.get(item.url),dpi);
     drawExportCaption(ctx,item,plan,x,y,dpi);
     drawExportBorder(ctx,plan,x,y,dpi);
-    drawExportCutMarks(ctx,plan,x,y,dpi);
   });
+  drawExportCutGrid(ctx,plan,items.length,dpi);
   return canvas;
 }
 function canvasAsBlob(canvas,type,quality) {
@@ -1926,11 +1936,8 @@ $('showLabels').addEventListener('change', () => {
 });
 $('cutLines').addEventListener('change', () => {
   state.cutLines = $('cutLines').checked;
-  $('cutStyle').disabled = !state.cutLines;
-  renderOutput();
-});
-$('cutStyle').addEventListener('change', () => {
-  state.cutStyle = $('cutStyle').value;
+  $('gap').disabled = state.cutLines;
+  $('gap').title = state.cutLines ? 'При включённой сетке карточки располагаются вплотную' : '';
   renderOutput();
 });
 function bindSelect(id, key, numeric) {

@@ -87,7 +87,7 @@ try {
   await page.locator('.mobile-nav [data-pane="images"]').click();
   await test('Image editor contains two clearly named actions, no copies stepper', async () => {
     const tile=page.locator('#gallery .tile').first();
-    assert.equal(await tile.getByRole('button',{name:'Изменить кадр изображения'}).count(),1);
+    assert.equal(await tile.getByRole('button',{name:'Изменить размер и кадр изображения'}).count(),1);
     assert.equal(await tile.getByRole('button',{name:'Удалить изображение из набора'}).count(),1);
     assert.equal(await tile.locator('.copy-input').count(),0);
   });
@@ -97,6 +97,30 @@ try {
     const size=await page.locator('#cropZoom').boundingBox();assert.ok(size?.height>=35);
   });
   await page.locator('#cropZoom').evaluate(el => { el.value='2'; el.dispatchEvent(new Event('input',{bubbles:true})); });
+  await test('Can reduce image to 30% without changing card dimensions', async () => {
+    const before=await page.evaluate(()=>({w:layoutPlan().card.w,h:layoutPlan().card.h}));
+    await page.locator('#cropZoom').evaluate(el => { el.value='0.3'; el.dispatchEvent(new Event('input',{bubbles:true})); });
+    const changed=await page.evaluate(()=>({
+      zoom:cropDraft.zoom,
+      transform:document.querySelector('#cropImage').style.transform,
+      pan:cropPanBounds(300,300,200,200,cropDraft.zoom)
+    }));
+    assert.equal(changed.zoom,0.3);
+    assert.match(changed.transform,/scale\(0\.3\)/);
+    assert.deepEqual(changed.pan,{x:0,y:0});
+    await page.locator('#cropApply').click();
+    const after=await page.evaluate(()=>({
+      w:layoutPlan().card.w,h:layoutPlan().card.h,
+      printTransform:document.querySelector('#printRoot .pic img').style.transform,
+      galleryTransform:document.querySelector('#gallery .tile-crop-viewport img').style.transform
+    }));
+    assert.deepEqual({w:after.w,h:after.h},before);
+    assert.match(after.printTransform,/scale\(0\.3\)/);
+    assert.match(after.galleryTransform,/scale\(0\.3\)/);
+    await page.locator('.mobile-nav [data-pane="images"]').click();
+    await page.locator('.crop-btn').click();
+    await page.locator('#cropZoom').evaluate(el => { el.value='2'; el.dispatchEvent(new Event('input',{bubbles:true})); });
+  });
   await test('Cropping supports zooming', async () => {
     assert.match(await page.locator('#cropImage').getAttribute('style'),/scale\(2\)/);
   });
@@ -153,11 +177,56 @@ try {
     assert.deepEqual(counts2,[3,2]);
     await page.evaluate(()=>{state.items=state.items.slice(0,1);state.items[0].copies=2;renderGallery();renderOutput();});
   });
-  await test('Cut marks present and nonoverlapping', async () => {
-    await page.evaluate(()=>{ state.cutLines=true; state.gap=2; renderOutput(); });
-    assert.equal(await page.locator('#printRoot .cut-corner').count(),8);
-    const length=await page.locator('#printRoot .cut-guide').first().evaluate(el=>parseFloat(el.style.getPropertyValue('--mark-size')));
-    assert.ok(length<1, String(length));
+  await test('Cut layout is one contiguous table with no gaps or empty cells', async () => {
+    const result=await page.evaluate(()=>{
+      state.cutLines=true;state.gap=3;renderOutput();
+      const plan=layoutPlan(),pageCards=[...document.querySelectorAll('#printRoot .sheet-card')];
+      const marks=[...document.querySelectorAll('#printRoot .cut-grid-line')];
+      return {gap:plan.gap,cols:plan.cols,cardCount:pageCards.length,
+        secondX:pageCards[1].style.left,
+        firstX:pageCards[0].style.left,
+        cardWidth:plan.card.w,
+        marks:marks.length,segments:gridSegments(pageCards.length,plan),
+        extraCells:document.querySelectorAll('#printRoot .cut-corner, #printRoot .cut-guide').length,
+        borderStyles:marks.map(el=>getComputedStyle(el)[el.classList.contains('horizontal')?'borderTopStyle':'borderLeftStyle'])};
+    });
+    assert.equal(result.gap,0);
+    assert.equal(result.secondX, (parseFloat(result.firstX)+result.cardWidth)+'mm');
+    assert.equal(result.extraCells,0);
+    assert.equal(result.marks,result.segments.length);
+    assert.ok(result.borderStyles.every(style=>style==='dashed'));
+    assert.equal(result.cardCount,2);
+  });
+  await test('Incomplete bottom row has no phantom cells; print and PDF use same grid', async () => {
+    const result=await page.evaluate(()=>{
+      const plan=layoutPlan(), six=gridSegments(6,plan), seven=gridSegments(7,plan);
+      const lastRow=7-(Math.ceil(7/plan.cols)-1)*plan.cols;
+      const bottom=seven.filter(s=>s.direction==='horizontal').at(-1);
+      const penultimate=seven.filter(s=>s.direction==='horizontal').at(-2);
+      let drawn=0;
+      const fake={
+        save(){},restore(){},beginPath(){},moveTo(){},lineTo(){drawn++},stroke(){},
+        setLineDash(){},set strokeStyle(v){},set lineWidth(v){}
+      };
+      drawExportCutGrid(fake,plan,7,180);
+      return {six,seven,lastRow,bottom,penultimate,drawn,cols:plan.cols};
+    });
+    assert.equal(result.bottom.length,result.lastRow*50);
+    assert.equal(result.penultimate.length,result.cols*50);
+    assert.equal(result.drawn,result.seven.length);
+    assert.ok(result.seven.length>result.six.length);
+  });
+  await test('Disabling cut grid restores original card spacing and removes guides', async () => {
+    await page.evaluate(()=>{state.cutLines=false;renderOutput();});
+    const result=await page.evaluate(()=>{
+      const plan=layoutPlan(),cards=[...document.querySelectorAll('#printRoot .sheet-card')];
+      return {gap:plan.gap,gridCount:document.querySelectorAll('#printRoot .cut-grid').length,
+        firstX:parseFloat(cards[0].style.left),secondX:parseFloat(cards[1].style.left),width:plan.card.w};
+    });
+    assert.equal(result.gridCount,0);
+    assert.equal(result.gap,3);
+    assert.equal(result.secondX-result.firstX,result.width+3);
+    await page.evaluate(()=>{state.cutLines=true;renderOutput();});
   });
   await test('Actual PDF export has correct A4 page size and page count', async () => {
     const result=await page.evaluate(async()=>{
