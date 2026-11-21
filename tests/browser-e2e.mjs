@@ -153,11 +153,29 @@ try {
     assert.deepEqual(counts2,[3,2]);
     await page.evaluate(()=>{state.items=state.items.slice(0,1);state.items[0].copies=2;renderGallery();renderOutput();});
   });
-  await test('Cut marks present and nonoverlapping', async () => {
-    await page.evaluate(()=>{ state.cutLines=true; state.gap=2; renderOutput(); });
-    assert.equal(await page.locator('#printRoot .cut-corner').count(),8);
-    const length=await page.locator('#printRoot .cut-guide').first().evaluate(el=>parseFloat(el.style.getPropertyValue('--mark-size')));
-    assert.ok(length<1, String(length));
+  await test('Dashed cut lines follow the exact card perimeter, no corner marks', async () => {
+    const result=await page.evaluate(()=>{
+      state.cutLines=true;state.gap=2;renderOutput();
+      const card=document.querySelector('#printRoot .sheet-card');
+      const guide=document.querySelector('#printRoot .cut-guide');
+      const style=getComputedStyle(guide);
+      return {
+        cardX:card.style.left,cardY:card.style.top,cardW:card.style.width,cardH:card.style.height,
+        guideX:guide.style.left,guideY:guide.style.top,guideW:guide.style.width,guideH:guide.style.height,
+        borderStyle:style.borderTopStyle,
+        oldCornerCount:document.querySelectorAll('#printRoot .cut-corner').length,
+        count:document.querySelectorAll('#printRoot .cut-guide').length
+      };
+    });
+    assert.equal(result.count,2);
+    assert.equal(result.borderStyle,'dashed');
+    assert.equal(result.oldCornerCount,0);
+    for(const key of ['X','Y','W','H'])assert.equal(result['card'+key],result['guide'+key]);
+  });
+  await test('Turning off cut lines removes all cut guides', async () => {
+    await page.evaluate(()=>{state.cutLines=false;renderOutput();});
+    assert.equal(await page.locator('#printRoot .cut-guide').count(),0);
+    await page.evaluate(()=>{state.cutLines=true;renderOutput();});
   });
   await test('Actual PDF export has correct A4 page size and page count', async () => {
     const result=await page.evaluate(async()=>{
