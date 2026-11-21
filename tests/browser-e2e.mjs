@@ -415,6 +415,32 @@ try {
     assert.ok(result.size>1000);
     assert.equal(result.signature,'%PDF');
   });
+  await test('P1-4b: clipped captions trigger gallery and crop editor warnings', async () => {
+    const result = await page.evaluate(() => {
+      const item=state.items[0], oldCaption=item.caption, oldLabels=state.showLabels;
+      const original={sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm};
+      try {
+        state.sizeMode='custom'; state.wCm=3; state.hCm=3;state.showLabels=true;
+        item.caption='Это очень длинная подпись для проверки предупреждения';
+        renderOutput();
+        const galleryWarn = !document.querySelector('#gallery .caption-warning').hidden;
+        openCrop(item);
+        const cropWarn = !document.querySelector('#cropCaptionWarning').hidden;
+        document.querySelector('#cropCaption').value='Кот';
+        updateCaptionWarnings(layoutPlan());
+        const cropShortWarn = !document.querySelector('#cropCaptionWarning').hidden;
+        closeCrop();
+        item.caption='Кот';
+        renderOutput();
+        const galleryShortWarn = !document.querySelector('#gallery .caption-warning').hidden;
+        return {galleryWarn,cropWarn,cropShortWarn,galleryShortWarn};
+      } finally {
+        closeCrop();
+        item.caption=oldCaption;state.showLabels=oldLabels;Object.assign(state,original);renderOutput();
+      }
+    });
+    assert.deepEqual(result,{galleryWarn:true,cropWarn:true,cropShortWarn:false,galleryShortWarn:false});
+  });
   await test('P1-4a: long two-line captions are clamped and export is inset by border', async () => {
     const result=await page.evaluate(() => {
       const item=state.items[0], oldCaption=item.caption, oldLabels=state.showLabels;
