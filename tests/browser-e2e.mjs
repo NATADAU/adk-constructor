@@ -35,6 +35,27 @@ try {
     state.items.push({ id:'e2e',url:img,caption:'Первый текст',copies:2,crop:null });
     renderGallery(); renderOutput();
   });
+  await test('P1-1: mobile status is visible on sheet and error survives navigation', async () => {
+    await page.setViewportSize({width:375,height:812});
+    await page.evaluate(() => {
+      state.pane='sheet'; syncPane();
+      document.querySelector('#status').textContent='Добавлено: 3 шт.';
+    });
+    const status=page.locator('#status');
+    await assert.equal(await status.isVisible(),true);
+    assert.equal(await status.evaluate(el=>el.closest('.pane-settings')),null);
+    await page.evaluate(() => {
+      document.querySelector('#status').textContent='Этот браузер не поддерживает отправку PDF. Нажмите «Скачать PDF».';
+    });
+    await page.waitForFunction(()=>document.querySelector('#status').dataset.level==='error');
+    assert.equal(await status.isVisible(),true);
+    await page.locator('.mobile-nav [data-pane="images"]').click();
+    assert.equal(await status.isVisible(),true);
+    await page.locator('.mobile-nav [data-pane="sheet"]').click();
+    assert.equal(await status.isVisible(),true);
+    assert.match(await status.textContent(),/не поддерживает/);
+    await page.evaluate(()=>document.querySelector('#status').textContent='');
+  });
   await test('Mobile sheet preview has usable height below multirow toolbar', async () => {
     for (const width of [320,375,414]) {
       await page.setViewportSize({width,height:740});
