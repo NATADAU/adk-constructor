@@ -30,6 +30,38 @@ try {
     }
     await page.setViewportSize({width:375,height:812});
   });
+  await test('P1-2a: large uploads shrink to 3000px and small images stay unchanged', async () => {
+    const result = await page.evaluate(async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 3200;
+      canvas.height = 320;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#019bab';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const fileBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .9));
+      const large = new File([fileBlob], 'large.jpg', {type:'image/jpeg'});
+      const before = state.items.length;
+      await addFiles([large]);
+      const item = state.items.at(-1);
+      const stored = await fetch(item.url).then(response => response.blob());
+      const decoded = await createImageBitmap(stored);
+      const resized = {w:item.w,h:item.h,actualW:decoded.width,actualH:decoded.height,type:stored.type};
+      decoded.close();
+      const smallCanvas = document.createElement('canvas');
+      smallCanvas.width = 400;
+      smallCanvas.height = 200;
+      const smallBlob = await new Promise(resolve => smallCanvas.toBlob(resolve, 'image/png'));
+      await addFiles([new File([smallBlob], 'small.png',{type:'image/png'})]);
+      const small = state.items.at(-1);
+      const smallStored = await fetch(small.url).then(response=>response.blob());
+      const smallResult = {w:small.w,h:small.h,type:smallStored.type,size:smallStored.size,originalSize:smallBlob.size};
+      state.items.splice(before).forEach(item=>URL.revokeObjectURL(item.url));
+      renderGallery();renderOutput();
+      return {resized,smallResult};
+    });
+    assert.deepEqual(result.resized,{w:3000,h:300,actualW:3000,actualH:300,type:'image/jpeg'});
+    assert.deepEqual(result.smallResult,{w:400,h:200,type:'image/png',size:result.smallResult.originalSize,originalSize:result.smallResult.originalSize});
+  });
   await page.evaluate(() => {
     const img='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0c8AAAAASUVORK5CYII=';
     state.items.push({ id:'e2e',url:img,caption:'Первый текст',copies:2,crop:null });
