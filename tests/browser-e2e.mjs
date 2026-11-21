@@ -417,6 +417,47 @@ try {
     assert.notEqual(shared?.activated,false,'Share must be called synchronously from the user tap');
     assert.ok(shared.size>1000);
   });
+  await test('iPhone Save PDF shares an actual file instead of opening a blob URL', async () => {
+    await page.evaluate(() => {
+      Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'});
+      window.__pdfSaveShare=null;
+      window.__pdfCreatedUrls=0;
+      window.__originalCreateObjectURL=URL.createObjectURL;
+      URL.createObjectURL=(...args)=>{window.__pdfCreatedUrls++;return window.__originalCreateObjectURL(...args)};
+      Object.defineProperty(navigator,'canShare',{configurable:true,value:input=>Array.isArray(input.files)});
+      Object.defineProperty(navigator,'share',{configurable:true,value:async input=>{
+        window.__pdfSaveShare={
+          name:input.files[0]?.name,type:input.files[0]?.type,
+          size:input.files[0]?.size,
+          hasUrl:'url' in input,
+          activation:navigator.userActivation?.isActive ?? null
+        };
+      }});
+      renderOutput();
+    });
+    await page.waitForFunction(()=>sharePdfCache!==null,{timeout:30000});
+    assert.equal(await page.locator('#savePdf').textContent(),'Сохранить PDF');
+    await page.locator('#savePdf').click();
+    const result=await page.evaluate(()=>({
+      shared:window.__pdfSaveShare,
+      blobUrls:window.__pdfCreatedUrls,
+      status:document.querySelector('#status').textContent
+    }));
+    assert.equal(result.shared?.name,'ADK-kartochki.pdf');
+    assert.equal(result.shared?.type,'application/pdf');
+    assert.ok(result.shared?.size>1000);
+    assert.equal(result.shared?.hasUrl,false);
+    assert.notEqual(result.shared?.activation,false);
+    assert.equal(result.blobUrls,0);
+    assert.match(result.status,/Действие с PDF завершено/);
+    await page.evaluate(() => {
+      URL.createObjectURL=window.__originalCreateObjectURL;
+      delete navigator.userAgent;
+      Object.defineProperty(navigator,'canShare',{configurable:true,value:input=>Array.isArray(input.files)});
+      Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{}});
+      renderOutput();
+    });
+  });
   await test('P1-2d: decoded export image cache is bounded and released', async () => {
     const results = await page.evaluate(async () => {
       clearExportBitmapCache();
