@@ -381,7 +381,7 @@ try {
       Object.defineProperty(navigator,'share',{configurable:true,value:async input=>{
         window.__capturedShare={
           fileName:input.files[0].name,type:input.files[0].type,
-          size:input.files[0].size,hasUrl:'url' in input,
+          size:input.files[0].size,hasUrl:'url' in input,hasTitle:'title' in input,
           activated:navigator.userActivation?.isActive ?? null
         };
       }});
@@ -397,6 +397,7 @@ try {
     assert.equal(shared?.type,'application/pdf');
     assert.equal(shared?.fileName,'ADK-kartochki.pdf');
     assert.equal(shared?.hasUrl,false);
+    assert.equal(shared?.hasTitle,false);
     assert.notEqual(shared?.activated,false,'Share must be called synchronously from the user tap');
     assert.ok(shared.size>1000);
   });
@@ -448,6 +449,22 @@ try {
     assert.equal(result.type,'application/pdf');
     assert.ok(result.size>1000);
     assert.equal(result.signature,'%PDF');
+  });
+  await test('P2-5: embedded browsers show Safari guidance without preparing PDF', async () => {
+    const result=await page.evaluate(async () => {
+      Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Mozilla/5.0 Telegram iOS'});
+      try {
+        const capable=supportsFileSharing();
+        await exportAction('share');
+        return {capable,notice:document.querySelector('#status').textContent};
+      } finally {
+        delete navigator.userAgent;
+        renderOutput();
+      }
+    });
+    assert.equal(result.capable,false);
+    assert.match(result.notice,/Safari/);
+    assert.match(result.notice,/внутри конструктора/);
   });
   await test('P2-3b: unchanged summary does not trigger redundant live announcements', async () => {
     const changes=await page.evaluate(async () => {
