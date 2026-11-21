@@ -150,6 +150,16 @@ try {
     assert.equal(await tile.locator('.copy-input').count(),0);
   });
   await page.locator('.crop-btn').click();
+  await test('P2-2: crop stage content ratio matches the actual card image area', async () => {
+    const measurement=await page.evaluate(() => {
+      const stage=document.querySelector('#cropStage'),v=cropViewport(layoutPlan(),!!document.querySelector('#cropCaption').value.trim()||captionShown(cropItem));
+      const css=getComputedStyle(stage);
+      return {ratio:stage.clientWidth/stage.clientHeight,expected:v.w/v.h,border:css.borderTopWidth,background:css.backgroundColor};
+    });
+    assert.ok(Math.abs(measurement.ratio/measurement.expected-1)<.005,JSON.stringify(measurement));
+    assert.equal(measurement.border,'0px');
+    assert.equal(measurement.background,'rgb(255, 255, 255)');
+  });
   await test('Crop dialog and large visible slider are available', async () => {
     assert.equal(await page.locator('#cropDialog').isVisible(),true);
     const size=await page.locator('#cropZoom').boundingBox();assert.ok(size?.height>=35);
