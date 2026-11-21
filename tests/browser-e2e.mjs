@@ -14,6 +14,11 @@ async function test(name, fn) {
 try {
   const page = await browser.newPage({viewport:{width:375,height:812},deviceScaleFactor:2,hasTouch:true,isMobile:true});
   await page.goto(pathToFileURL(resolve('ADK_Card_Designer.html')).href);
+  // Simulate a file-share-capable mobile browser for the existing iPhone tests.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator,'canShare',{configurable:true,value:input=>Array.isArray(input?.files)});
+    Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{}});
+  });
   await test('Mobile layout fits 320, 375 and 414px', async () => {
     for (const width of [320,375,414]) {
       await page.setViewportSize({width,height:812});
@@ -30,10 +35,63 @@ try {
     }
     await page.setViewportSize({width:375,height:812});
   });
+  await test('P1-2a: large uploads shrink to 3000px and small images stay unchanged', async () => {
+    const result = await page.evaluate(async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 3200;
+      canvas.height = 320;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#019bab';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const fileBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .9));
+      const large = new File([fileBlob], 'large.jpg', {type:'image/jpeg'});
+      const before = state.items.length;
+      await addFiles([large]);
+      const item = state.items.at(-1);
+      const stored = await fetch(item.url).then(response => response.blob());
+      const decoded = await createImageBitmap(stored);
+      const resized = {w:item.w,h:item.h,actualW:decoded.width,actualH:decoded.height,type:stored.type};
+      decoded.close();
+      const smallCanvas = document.createElement('canvas');
+      smallCanvas.width = 400;
+      smallCanvas.height = 200;
+      const smallBlob = await new Promise(resolve => smallCanvas.toBlob(resolve, 'image/png'));
+      await addFiles([new File([smallBlob], 'small.png',{type:'image/png'})]);
+      const small = state.items.at(-1);
+      const smallStored = await fetch(small.url).then(response=>response.blob());
+      const smallResult = {w:small.w,h:small.h,type:smallStored.type,size:smallStored.size,originalSize:smallBlob.size};
+      state.items.splice(before).forEach(item=>URL.revokeObjectURL(item.url));
+      renderGallery();renderOutput();
+      return {resized,smallResult};
+    });
+    assert.deepEqual(result.resized,{w:3000,h:300,actualW:3000,actualH:300,type:'image/jpeg'});
+    assert.deepEqual(result.smallResult,{w:400,h:200,type:'image/png',size:result.smallResult.originalSize,originalSize:result.smallResult.originalSize});
+  });
   await page.evaluate(() => {
     const img='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0c8AAAAASUVORK5CYII=';
     state.items.push({ id:'e2e',url:img,caption:'Первый текст',copies:2,crop:null });
     renderGallery(); renderOutput();
+  });
+  await test('P1-1: mobile status is visible on sheet and error survives navigation', async () => {
+    await page.setViewportSize({width:375,height:812});
+    await page.evaluate(() => {
+      state.pane='sheet'; syncPane();
+      document.querySelector('#status').textContent='Добавлено: 3 шт.';
+    });
+    const status=page.locator('#status');
+    await assert.equal(await status.isVisible(),true);
+    assert.equal(await status.evaluate(el=>el.closest('.pane-settings')),null);
+    await page.evaluate(() => {
+      document.querySelector('#status').textContent='Этот браузер не поддерживает отправку PDF. Нажмите «Скачать PDF».';
+    });
+    await page.waitForFunction(()=>document.querySelector('#status').dataset.level==='error');
+    assert.equal(await status.isVisible(),true);
+    await page.locator('.mobile-nav [data-pane="images"]').click();
+    assert.equal(await status.isVisible(),true);
+    await page.locator('.mobile-nav [data-pane="sheet"]').click();
+    assert.equal(await status.isVisible(),true);
+    assert.match(await status.textContent(),/не поддерживает/);
+    await page.evaluate(()=>document.querySelector('#status').textContent='');
   });
   await test('Mobile sheet preview has usable height below multirow toolbar', async () => {
     for (const width of [320,375,414]) {
@@ -92,6 +150,33 @@ try {
     assert.equal(await tile.locator('.copy-input').count(),0);
   });
   await page.locator('.crop-btn').click();
+  await test('P2-2: crop stage content ratio matches the actual card image area', async () => {
+    const measurement=await page.evaluate(() => {
+      const stage=document.querySelector('#cropStage'),v=cropViewport(layoutPlan(),!!document.querySelector('#cropCaption').value.trim()||captionShown(cropItem));
+      const css=getComputedStyle(stage);
+      return {ratio:stage.clientWidth/stage.clientHeight,expected:v.w/v.h,border:css.borderTopWidth,background:css.backgroundColor};
+    });
+    assert.ok(Math.abs(measurement.ratio/measurement.expected-1)<.005,JSON.stringify(measurement));
+    assert.equal(measurement.border,'0px');
+    assert.equal(measurement.background,'rgb(255, 255, 255)');
+  });
+  await test('P2-3: crop editor receives focus, traps Tab, and accepts keyboard panning', async () => {
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'cropStage');
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'cropApply');
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'cropStage');
+    await page.locator('#cropZoom').evaluate(el => {
+      el.value='2';el.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await page.locator('#cropStage').focus();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Shift+ArrowRight');
+    await page.keyboard.press('Equal');
+    const crop=await page.evaluate(()=>({...cropDraft}));
+    assert.ok(crop.x>=10,JSON.stringify(crop));
+    assert.ok(crop.zoom>2,JSON.stringify(crop));
+  });
   await test('Crop dialog and large visible slider are available', async () => {
     assert.equal(await page.locator('#cropDialog').isVisible(),true);
     const size=await page.locator('#cropZoom').boundingBox();assert.ok(size?.height>=35);
@@ -142,6 +227,13 @@ try {
     assert.equal(await page.locator('#backToImages').isVisible(),true);
     await page.locator('#backToImages').click();
     assert.equal(await page.locator('#dropZone').getAttribute('data-pane'),'images');
+  });
+  await test('P2-3: Escape closes crop editor and restores focus', async () => {
+    const button=page.locator('#gallery .crop-btn').first();
+    await button.click();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#cropDialog').isVisible(),false);
+    assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains('crop-btn')),true);
   });
   await test('Gallery thumbnail reflects applied crop', async () => {
     const galleryImage=page.locator('#gallery .tile-crop-viewport img').first();
@@ -255,6 +347,22 @@ try {
     assert.deepEqual(result.start,[137,80,78,71,13,10,26,10]);
     assert.ok(result.size>1000);
   });
+  await test('P2-6: PNG export embeds physical 180 DPI pHYs metadata and correct CRC', async () => {
+    const result=await page.evaluate(async () => {
+      const png=await buildPngFile();
+      const b=new Uint8Array(await png.arrayBuffer()),view=new DataView(b.buffer);
+      return {
+        type:png.type,length:view.getUint32(33),
+        chunk:String.fromCharCode(...b.subarray(37,41)),
+        x:view.getUint32(41),y:view.getUint32(45),unit:b[49],
+        actualCrc:view.getUint32(50),expectedCrc:zipCrc32(b.subarray(37,50))
+      };
+    });
+    assert.deepEqual(result,{
+      type:'image/png',length:9,chunk:'pHYs',x:7087,y:7087,unit:1,
+      actualCrc:result.expectedCrc,expectedCrc:result.expectedCrc
+    });
+  });
   await test('Multipage PNG export produces ZIP and PDF retains all pages', async () => {
     const result=await page.evaluate(async()=>{
       const previous=state.items[0].copies;
@@ -289,7 +397,7 @@ try {
       Object.defineProperty(navigator,'share',{configurable:true,value:async input=>{
         window.__capturedShare={
           fileName:input.files[0].name,type:input.files[0].type,
-          size:input.files[0].size,hasUrl:'url' in input,
+          size:input.files[0].size,hasUrl:'url' in input,hasTitle:'title' in input,
           activated:navigator.userActivation?.isActive ?? null
         };
       }});
@@ -305,8 +413,283 @@ try {
     assert.equal(shared?.type,'application/pdf');
     assert.equal(shared?.fileName,'ADK-kartochki.pdf');
     assert.equal(shared?.hasUrl,false);
+    assert.equal(shared?.hasTitle,false);
     assert.notEqual(shared?.activated,false,'Share must be called synchronously from the user tap');
     assert.ok(shared.size>1000);
+  });
+  await test('P1-2d: decoded export image cache is bounded and released', async () => {
+    const results = await page.evaluate(async () => {
+      clearExportBitmapCache();
+      const canvas=document.createElement('canvas');
+      canvas.width=2; canvas.height=2;
+      const urls=[];
+      for (let i=0; i<5; i++) {
+        const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+        urls.push(URL.createObjectURL(blob));
+      }
+      try {
+        const items=urls.map((url,id)=>({id:String(id),url}));
+        const decoded=await prepareExportImages(items);
+        const cached=exportBitmapCache.size;
+        const last=decoded.images.get(urls[4]);
+        const before=last.width;
+        decoded.release();
+        const released=last.width;
+        clearExportBitmapCache(urls[0]);
+        const afterRemoval=exportBitmapCache.size;
+        clearExportBitmapCache();
+        return {cached,before,released,afterRemoval,final:exportBitmapCache.size};
+      } finally {
+        clearExportBitmapCache();
+        urls.forEach(url=>URL.revokeObjectURL(url));
+      }
+    });
+    assert.deepEqual(results,{cached:4,before:2,released:0,afterRemoval:3,final:0});
+  });
+  await test('P1-2c: PDF export uses Blob encoding rather than synchronous data URL', async () => {
+    const result=await page.evaluate(async () => {
+      const original=HTMLCanvasElement.prototype.toDataURL;
+      let called=false;
+      HTMLCanvasElement.prototype.toDataURL=function() {
+        called=true;
+        throw Error('Synchronous data URL should not be used for PDF');
+      };
+      try {
+        const file=await buildPdfFile();
+        return {called,type:file.type,size:file.size,signature:await file.slice(0,4).text()};
+      } finally {
+        HTMLCanvasElement.prototype.toDataURL=original;
+      }
+    });
+    assert.equal(result.called,false);
+    assert.equal(result.type,'application/pdf');
+    assert.ok(result.size>1000);
+    assert.equal(result.signature,'%PDF');
+  });
+  await test('P2-5: embedded browsers show Safari guidance without preparing PDF', async () => {
+    const result=await page.evaluate(async () => {
+      Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Mozilla/5.0 Telegram iOS'});
+      try {
+        const capable=supportsFileSharing();
+        await exportAction('share');
+        return {capable,notice:document.querySelector('#status').textContent};
+      } finally {
+        delete navigator.userAgent;
+        renderOutput();
+      }
+    });
+    assert.equal(result.capable,false);
+    assert.match(result.notice,/Safari/);
+    assert.match(result.notice,/внутри конструктора/);
+  });
+  await test('P2-3b: unchanged summary does not trigger redundant live announcements', async () => {
+    const changes=await page.evaluate(async () => {
+      const summary=document.querySelector('#summary'),records=[];
+      const observer=new MutationObserver(entries=>records.push(...entries));
+      observer.observe(summary,{childList:true,characterData:true,subtree:true});
+      renderOutput();
+      renderOutput();
+      await Promise.resolve();
+      observer.disconnect();
+      return records.length;
+    });
+    assert.equal(changes,0);
+  });
+  await test('P2-1: gallery crop ratio updates after resizing without replacing caption field', async () => {
+    const result=await page.evaluate(() => {
+      const old={sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm};
+      const tile=document.querySelector('#gallery .tile'),field=tile.querySelector('.cap-input');
+      try {
+        state.sizeMode='custom';state.wCm=10;state.hCm=5;renderOutput();
+        const wide=tile.querySelector('.tile-crop-viewport').style.getPropertyValue('--crop-ratio');
+        state.wCm=5;state.hCm=10;renderOutput();
+        const narrow=tile.querySelector('.tile-crop-viewport').style.getPropertyValue('--crop-ratio');
+        const plan=layoutPlan(),v=cropViewport(plan,captionShown(state.items[0]));
+        return {wide:Number(wide),narrow:Number(narrow),expected:v.w/v.h,fieldSame:field===tile.querySelector('.cap-input')};
+      } finally {
+        Object.assign(state,old);renderOutput();
+      }
+    });
+    assert.ok(result.wide>result.narrow,JSON.stringify(result));
+    assert.ok(Math.abs(result.narrow-result.expected)<1e-5,JSON.stringify(result));
+    assert.equal(result.fieldSame,true);
+  });
+  await test('P1-4b: clipped captions trigger gallery and crop editor warnings', async () => {
+    const result = await page.evaluate(() => {
+      const item=state.items[0], oldCaption=item.caption, oldLabels=state.showLabels;
+      const original={sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm};
+      try {
+        state.sizeMode='custom'; state.wCm=3; state.hCm=3;state.showLabels=true;
+        item.caption='Это очень длинная подпись для проверки предупреждения';
+        renderOutput();
+        const galleryWarn = !document.querySelector('#gallery .caption-warning').hidden;
+        openCrop(item);
+        const cropWarn = !document.querySelector('#cropCaptionWarning').hidden;
+        document.querySelector('#cropCaption').value='Кот';
+        updateCaptionWarnings(layoutPlan());
+        const cropShortWarn = !document.querySelector('#cropCaptionWarning').hidden;
+        closeCrop();
+        item.caption='Кот';
+        renderOutput();
+        const galleryShortWarn = !document.querySelector('#gallery .caption-warning').hidden;
+        return {galleryWarn,cropWarn,cropShortWarn,galleryShortWarn};
+      } finally {
+        closeCrop();
+        item.caption=oldCaption;state.showLabels=oldLabels;Object.assign(state,original);renderOutput();
+      }
+    });
+    assert.deepEqual(result,{galleryWarn:true,cropWarn:true,cropShortWarn:false,galleryShortWarn:false});
+  });
+  await test('P1-4a: long two-line captions are clamped and export is inset by border', async () => {
+    const result=await page.evaluate(() => {
+      const item=state.items[0], oldCaption=item.caption, oldLabels=state.showLabels;
+      const original={sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm,border:state.border};
+      try {
+        state.sizeMode='custom';state.wCm=5;state.hCm=10;state.border='normal';
+        state.showLabels=true;
+        item.caption='Очень длинная подпись которая не должна обрезать третью строку посередине: требуется ограничение в две строки';
+        renderOutput();
+        const cap=document.querySelector('#printRoot .cap');
+        const css=getComputedStyle(cap);
+        const plan=layoutPlan(),bw=borderWidth();
+        const captured=[];
+        const ctx={
+          measureText(text){return {width:text.length*5};},
+          save(){},beginPath(){},rect(...args){captured.push(args);},clip(){},
+          fillText(){},restore(){},
+          set fillStyle(v){},set textAlign(v){},set textBaseline(v){},set font(v){}
+        };
+        drawExportCaption(ctx,item,plan,0,0,180);
+        const mmToPixels=(mm)=>exportPixels(mm,180);
+        return {
+          clamp:css.webkitLineClamp,display:css.display,
+          clip:captured[0],
+          expectedX:mmToPixels(bw+1.4),
+          expectedY:mmToPixels(plan.card.h-bw-Math.max(6,Math.min(12,plan.card.h*.2))),
+          expectedW:mmToPixels(plan.card.w-2*bw-2.8)
+        };
+      } finally {
+        item.caption=oldCaption;state.showLabels=oldLabels;Object.assign(state,original);renderOutput();
+      }
+    });
+    assert.equal(result.clamp,'2');
+    assert.equal(result.display,'flow-root'===result.display?'flow-root':'-webkit-box');
+    assert.ok(Math.abs(result.clip[0]-result.expectedX)<.05,JSON.stringify(result));
+    assert.ok(Math.abs(result.clip[1]-result.expectedY)<.05,JSON.stringify(result));
+    assert.ok(Math.abs(result.clip[2]-result.expectedW)<.05,JSON.stringify(result));
+  });
+  await test('P1-3: resizing a card clamps its visible crop without changing the saved crop', async () => {
+    const result=await page.evaluate(() => {
+      const item=state.items[0], oldCrop=item.crop, oldW=item.w, oldH=item.h;
+      const original={sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm};
+      try {
+        item.w=1600;item.h=900;item.crop={zoom:1.6,x:0,y:30};
+        state.sizeMode='custom';state.wCm=10;state.hCm=5;
+        renderOutput();
+        const before=document.querySelector('#printRoot .pic img').style.transform;
+        state.wCm=5;state.hCm=10;
+        renderOutput();
+        const after=document.querySelector('#printRoot .pic img').style.transform;
+        return {before,after,savedY:item.crop.y};
+      } finally {
+        item.crop=oldCrop;item.w=oldW;item.h=oldH;
+        Object.assign(state,original);
+        renderOutput();
+      }
+    });
+    assert.ok(result.before.includes('translate(0%, 30%)'),result.before);
+    assert.ok(result.after.includes('translate(0%, 0%)'),result.after);
+    assert.equal(result.savedY,30);
+  });
+  await test('P1-2f: large collections show a gentle warning', async () => {
+    const result=await page.evaluate(() => {
+      const item=state.items[0], before=item.copies;
+      const itemsBefore=state.items;
+      try {
+        state.items=Array.from({length:41},(_,i)=>({...item,id:'warning'+i,copies:1}));
+        renderOutput();
+        const visible=!document.querySelector('#largeSetNotice').hidden;
+        const message=document.querySelector('#largeSetNotice').textContent;
+        return {visible,message};
+      } finally {
+        state.items=itemsBefore;
+        item.copies=before;
+        renderOutput();
+      }
+    });
+    assert.equal(result.visible,true);
+    assert.match(result.message,/41 изображений/);
+    assert.equal(await page.locator('#largeSetNotice').isVisible(),false);
+  });
+  await test('P1-2e: unsupported browsers never prebuild PDF and show a helpful message', async () => {
+    await page.evaluate(() => {
+      window.__oldPdfBuilder = buildPdfFile;
+      window.__unsupportedPdfBuilds = 0;
+      buildPdfFile = async function() {
+        window.__unsupportedPdfBuilds++;
+        return window.__oldPdfBuilder();
+      };
+      Object.defineProperty(navigator,'canShare',{configurable:true,value:undefined});
+      Object.defineProperty(navigator,'share',{configurable:true,value:undefined});
+      state.items[0].caption='Проверка браузера без отправки';
+      renderOutput();
+    });
+    assert.equal(await page.locator('#sharePdf').isDisabled(),false);
+    await page.waitForTimeout(1150);
+    assert.equal(await page.evaluate(()=>window.__unsupportedPdfBuilds),0);
+    assert.equal(await page.evaluate(()=>sharePdfCache),null);
+    await page.locator('#sharePdf').click();
+    assert.match(await page.locator('#status').textContent(),/Этот браузер не поддерживает отправку PDF/);
+    assert.equal(await page.locator('#status').isVisible(),true);
+    await page.evaluate(() => {
+      buildPdfFile = window.__oldPdfBuilder;
+      delete window.__oldPdfBuilder;
+      Object.defineProperty(navigator,'canShare',{configurable:true,value:input=>Array.isArray(input?.files)});
+      Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{}});
+      renderOutput();
+    });
+  });
+  await test('P1-2b: rapid caption changes cause only one delayed PDF build', async () => {
+    await page.waitForFunction(() => !!sharePdfCache && !document.querySelector('#sharePdf').disabled);
+    await page.evaluate(() => {
+      window.__oldPdfBuilder = buildPdfFile;
+      window.__pdfBuildCount = 0;
+      buildPdfFile = async function() {
+        window.__pdfBuildCount++;
+        return window.__oldPdfBuilder();
+      };
+      for (let i = 0; i < 10; i++) {
+        state.items[0].caption = 'Изменение ' + i;
+        renderOutput();
+      }
+    });
+    await page.waitForFunction(() => window.__pdfBuildCount === 1, {timeout:30000});
+    await page.waitForFunction(() => !!sharePdfCache && !document.querySelector('#sharePdf').disabled, {timeout:30000});
+    const count = await page.evaluate(() => {
+      const count = window.__pdfBuildCount;
+      buildPdfFile = window.__oldPdfBuilder;
+      delete window.__oldPdfBuilder;
+      return count;
+    });
+    assert.equal(count,1);
+  });
+  await test('P1-2b: PDF download reuses the prepared PDF', async () => {
+    const result = await page.evaluate(async () => {
+      const originalBuild = buildPdfFile, originalDownload = downloadExportFile;
+      let calls = 0, downloaded = null;
+      try {
+        buildPdfFile = async () => { calls++; return originalBuild(); };
+        downloadExportFile = file => { downloaded = {name:file.name,size:file.size,same:file===sharePdfCache}; };
+        await exportAction('pdf');
+        return {calls,downloaded};
+      } finally {
+        buildPdfFile = originalBuild;
+        downloadExportFile = originalDownload;
+      }
+    });
+    assert.equal(result.calls,0);
+    assert.equal(result.downloaded?.same,true);
+    assert.equal(result.downloaded?.name,'ADK-kartochki.pdf');
   });
   await test('Browser can generate a print CSS PDF', async () => {
     const pdf=await page.pdf({printBackground:true,preferCSSPageSize:true});

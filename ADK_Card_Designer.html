@@ -110,7 +110,30 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .help-link:hover { color: var(--clp-teal-dark); }
 .help-link svg { flex-shrink: 0; color: var(--clp-orange); }
 .hint { color: var(--clp-muted); margin: 0; font-size: 14px; }
-.status { min-height: 1.2em; margin: 0; color: var(--clp-muted); font-size: 13px; }
+.status {
+  position: fixed;
+  z-index: 80;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+  padding: 12px 16px;
+  border: 1px solid var(--clp-teal);
+  border-radius: 12px;
+  background: var(--clp-surface);
+  color: var(--clp-text);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .14);
+  font-size: 14px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.status:empty { display: none; }
+.status[data-level="error"] {
+  border-color: #c33;
+  background: #fff2f2;
+  color: #822;
+}
+@media print { .status { display: none !important; } }
 .popover {
   position: fixed;
   inset: 0;
@@ -468,7 +491,15 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   color: #2A2A2A;
 }
 .cap.one { font-size: calc(var(--cap) * .46); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cap.two { font-size: calc(var(--cap) * .34); overflow: hidden; }
+.cap.two {
+  font-size: calc(var(--cap) * .34);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.caption-warning { margin: 4px 0; color: #a13b29; font-size: 12px; line-height: 1.35; }
+.caption-warning[hidden] { display: none; }
 .drop-active .topbar,
 .drop-active .left-col,
 .drop-active .preview-panel { outline: 2px dashed var(--clp-teal); outline-offset: 2px; }
@@ -555,7 +586,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .crop-dialog { position: fixed; inset: 0; background: rgba(20,35,39,.72); z-index: 999; display: grid; place-items: center; padding: 16px; }
 .crop-box { width: min(95vw, 550px); max-height: 92dvh; overflow: auto; background: #fff; color: #233; padding: 18px; border-radius: 16px; display: flex; flex-direction: column; gap: 12px; }
 .crop-box h2 { margin: 0; font-size: 20px; }
-.crop-stage { position: relative; overflow: hidden; background: #f1f6f6; width: min(100%, 380px); max-height: 45dvh; margin: auto; border: 2px solid #019BAB; touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: contain; cursor: grab; }
+.crop-stage { position: relative; overflow: hidden; background: #fff; width: min(100%, 380px); max-height: 45dvh; margin: auto; outline: 2px solid #019BAB; touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: contain; cursor: grab; }
 .crop-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; transform-origin: center; }
 .crop-controls { display: flex; align-items: center; gap: 12px; font-weight: 700; color: #123c43; flex-wrap: wrap; }
 .crop-controls input[type="range"] { flex: 1 1 170px; width: 100%; min-width: 130px; height: 40px; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; touch-action: pan-x; cursor: pointer; }
@@ -564,7 +595,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .crop-controls input[type="range"]::-moz-range-track { height: 10px; background: #a4dfe5; border: 2px solid #007f8e; border-radius: 999px; }
 .crop-controls input[type="range"]::-moz-range-thumb { width: 26px; height: 26px; border: 4px solid #fff; border-radius: 50%; background: #006b78; box-shadow: 0 0 0 2px #006b78; }
 #cropZoomValue { min-width: 58px; text-align: right; color: #006b78; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.crop-stage.dragging { cursor: grabbing; border-color: #e5004f; }
+.crop-stage.dragging { cursor: grabbing; outline-color: #e5004f; }
 .crop-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .crop-actions button { min-height: 44px; padding: 9px 14px; border-radius: 9px; border: 1px solid #abc; background: #fff; }
 .crop-actions .crop-apply { background: #019BAB; color: #fff; border-color: #019BAB; }
@@ -591,6 +622,8 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
     </div>
   </header>
 
+  <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></p>
+
   <nav class="mobile-nav" aria-label="Разделы">
     <button type="button" class="nav-btn active" data-pane="sheet">Лист</button>
     <button type="button" class="nav-btn" data-pane="settings">Настройки</button>
@@ -600,7 +633,6 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   <div class="work">
     <div class="left-col">
       <section class="settings pane pane-settings" id="settings" aria-label="Настройки">
-        <p id="status" class="status" role="status"></p>
         <div class="mode-block">
           <span class="group-title">Что хотите подготовить?</span>
           <div class="chips mode-chips" role="group" aria-label="Режим работы">
@@ -690,6 +722,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
     <section class="panel preview-panel pane pane-sheet" id="printPanel">
       <p id="summary" class="summary" aria-live="polite">Добавьте изображения</p>
       <p id="warn" class="warn" hidden></p>
+      <p id="largeSetNotice" class="hint" hidden></p>
       <div class="sheet-back"><button type="button" class="btn secondary" id="backToImages">← К изображениям</button></div>
       <div class="sheet-quantity" id="sheetQuantity" hidden aria-label="Количество копий на листе">
         <label class="sheet-quantity-picker" for="sheetImageSelect">Изображение
@@ -744,9 +777,10 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 <div class="crop-dialog" id="cropDialog" hidden role="dialog" aria-modal="true" aria-labelledby="cropTitle">
  <div class="crop-box">
   <h2 id="cropTitle">Размер и положение изображения</h2>
-  <div id="cropStage" class="crop-stage"><img id="cropImage" alt="Изображение для кадрирования"></div>
+  <div id="cropStage" class="crop-stage" tabindex="0" role="group" aria-label="Область кадрирования. Стрелки двигают изображение, плюс и минус меняют масштаб."><img id="cropImage" alt="Изображение для кадрирования"></div>
   <label class="crop-controls">Масштаб <input id="cropZoom" type="range" min="0.3" max="3" step="0.05" value="1"><span id="cropZoomValue">100%</span></label>
   <label class="tile-label">Подпись на карточке<input id="cropCaption" class="control" type="text" maxlength="80" placeholder="Введите подпись"></label>
+  <p class="caption-warning" id="cropCaptionWarning" hidden>Подпись не помещается полностью — сократите текст или увеличьте карточку.</p>
   <p style="margin:0;font-size:13px">Уменьшайте изображение до 30% или увеличивайте до 300%. При уменьшении вокруг картинки остаётся свободное место. Исходный файл не изменится.</p>
   <div class="crop-actions"><button type="button" id="cropReset">Сбросить</button><button type="button" id="cropCancel">Отмена</button><button type="button" id="cropApply" class="crop-apply">Применить</button></div>
  </div>
@@ -915,7 +949,9 @@ function syncFormControls() {
 function syncPane() {
   $('dropZone').dataset.pane = state.pane;
   document.querySelectorAll('.mobile-nav .nav-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.pane === state.pane);
+    const active = btn.dataset.pane === state.pane;
+    btn.classList.toggle('active',active);
+    btn.setAttribute('aria-pressed',String(active));
   });
   requestAnimationFrame(() => requestAnimationFrame(applyScale));
 }
@@ -949,7 +985,8 @@ function buildCard(item, plan, x, y) {
   img.alt = item.caption.trim() || 'Изображение без подписи';
   img.src = item.url;
   pic.append(img);
-  if (item.crop) { img.style.transform = 'translate(' + item.crop.x + '%, ' + item.crop.y + '%) scale(' + item.crop.zoom + ')'; }
+  const effectiveCrop = boundedItemCrop(item, plan);
+  if (effectiveCrop) { img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')'; }
   card.append(pic);
   if (captionShown(item)) {
     const text = item.caption.trim();
@@ -1077,7 +1114,7 @@ function itemWord(n) {
 function setPrintEnabled(on) {
   $('print').disabled = !on;
   $('savePdf').disabled = !on;
-  $('sharePdf').disabled = !on || !sharePdfCache || exportBusy;
+  $('sharePdf').disabled = !on || exportBusy || (supportsFileSharing() && !sharePdfCache);
   $('savePng').disabled = !on;
 }
 function syncPrimaryActions() {
@@ -1092,6 +1129,8 @@ function renderOutput() {
   syncSheetQuantity();
   const plan = layoutPlan();
   const key = structureKey(plan);
+  updateCaptionWarnings(plan);
+  syncGalleryCropPreviews(plan);
   $('pageCss').textContent = '@page{size:' + plan.page.w + 'mm ' + plan.page.h + 'mm;margin:0;}';
   $('sizeNow').textContent = 'На бумаге: ' + cmLabel(plan.card.w) + ' × ' + cmLabel(plan.card.h) + ' см';
   if (key === lastKey && !plan.error && !captionsNeedRebuild()) {
@@ -1108,14 +1147,22 @@ function renderOutput() {
   if (plan.error) {
     warn.hidden = false;
     warn.textContent = plan.error;
-    summary.textContent = paperName;
   } else {
     warn.hidden = true;
     warn.textContent = '';
-    summary.textContent = total
-      ? total + ' ' + itemWord(total) + ' · ' + pageList.length + ' ' + sheetWord(pageList.length) + ' · ' + paperName
-      : 'Добавьте изображения';
   }
+  // Announce totals to assistive technologies only when the numbers change.
+  const nextSummary = plan.error ? paperName :
+    (total ? total + ' ' + itemWord(total) + ' · ' + pageList.length + ' ' +
+      sheetWord(pageList.length) + ' · ' + paperName : 'Добавьте изображения');
+  if (summary.textContent !== nextSummary) summary.textContent = nextSummary;
+  const largeSet = !plan.error && (pageList.length > 20 || state.items.length > 40);
+  const largeSetNotice = $('largeSetNotice');
+  largeSetNotice.hidden = !largeSet;
+  largeSetNotice.textContent = largeSet
+    ? 'Большой набор (' + state.items.length + ' изображений, ' + pageList.length +
+      ' листов). На телефоне подготовка файлов может занять больше времени.'
+    : '';
   summary.dataset.cardW = String(plan.card.w);
   summary.dataset.cardH = String(plan.card.h);
   summary.dataset.cols = String(plan.cols);
@@ -1243,6 +1290,22 @@ function renderGallery() {
   state.items.forEach(item => gallery.append(tileElement(item)));
   syncPrimaryActions();
 }
+// Update existing thumbnails in place so typing in a caption never loses focus.
+function syncGalleryCropPreviews(plan) {
+  document.querySelectorAll('#gallery .tile').forEach(tile => {
+    const item = findItem(tile.dataset.id);
+    if (!item) return;
+    const viewport = cropViewport(plan,captionShown(item));
+    const frame = tile.querySelector('.tile-crop-viewport');
+    const img = frame && frame.querySelector('img');
+    if (!frame || !img) return;
+    frame.style.setProperty('--crop-ratio',String(viewport.w/viewport.h));
+    const crop = boundedItemCrop(item,plan);
+    img.style.transform = crop
+      ? 'translate(' + crop.x + '%, ' + crop.y + '%) scale(' + crop.zoom + ')'
+      : '';
+  });
+}
 function tileElement(item) {
   const tile = document.createElement('article');
   tile.className = 'tile';
@@ -1260,7 +1323,8 @@ function tileElement(item) {
   img.alt = '';
   img.draggable = false;
   img.src = item.url;
-  if (item.crop) img.style.transform = 'translate(' + item.crop.x + '%, ' + item.crop.y + '%) scale(' + item.crop.zoom + ')';
+  const effectiveCrop = boundedItemCrop(item, plan);
+  if (effectiveCrop) img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')';
   cropPreview.append(img);
   frame.append(cropPreview);
   const label = document.createElement('label');
@@ -1273,6 +1337,10 @@ function tileElement(item) {
   input.placeholder = 'Необязательно';
   input.value = item.caption;
   label.append(input);
+  const captionWarning = document.createElement('p');
+  captionWarning.className = 'caption-warning';
+  captionWarning.hidden = true;
+  captionWarning.textContent = 'Подпись не помещается полностью — сократите текст или увеличьте карточку.';
   const actions = document.createElement('div');
   actions.className = 'tile-actions';
   const cropBtn = document.createElement('button');
@@ -1286,7 +1354,7 @@ function tileElement(item) {
   remove.textContent = 'Удалить изображение';
   remove.setAttribute('aria-label','Удалить изображение из набора');
   actions.append(cropBtn,remove);
-  tile.append(frame, label, actions);
+  tile.append(frame, label, captionWarning, actions);
   return tile;
 }
 let cropItem = null;
@@ -1296,11 +1364,49 @@ function cropViewport(plan, captionVisible) {
   const capHeight = captionVisible ? Math.max(6, Math.min(12, plan.card.h * .2)) : 0;
   return { w: Math.max(1, plan.card.w - innerInset), h: Math.max(1, plan.card.h - innerInset - capHeight) };
 }
+// Measure captions with the same text wrapping and width as PDF export.
+const captionMeasureCanvas = document.createElement('canvas');
+function captionOverflows(item, plan, forceVisible = false) {
+  if (!item.caption || !item.caption.trim() || (!forceVisible && !captionShown(item))) return false;
+  const large = plan.card.h >= 70;
+  const capH = Math.max(6, Math.min(12, plan.card.h * .2));
+  const fontMm = capH * (large ? .34 : .46);
+  const width = exportPixels(plan.card.w - 2*borderWidth() - 2.8, 96);
+  const ctx = captionMeasureCanvas.getContext('2d');
+  if (!ctx || width <= 0) return false;
+  ctx.font = '700 ' + exportPixels(fontMm, 96) + 'px Arial, sans-serif';
+  const maxLines = large ? Math.max(1, Math.floor((capH-1)/(fontMm*1.15))) : 1;
+  const lines = wrapExportCaption(ctx,item.caption,width,maxLines);
+  return lines.join(' ') !== item.caption.trim().replace(/\s+/g,' ');
+}
+function updateCaptionWarnings(plan) {
+  document.querySelectorAll('#gallery .tile').forEach(tile => {
+    const item = findItem(tile.dataset.id);
+    const notice = tile.querySelector('.caption-warning');
+    if (item && notice) notice.hidden = !captionOverflows(item,plan);
+  });
+  if (cropItem) {
+    const draft = {...cropItem, caption:$('cropCaption').value};
+    $('cropCaptionWarning').hidden = !captionOverflows(draft,plan,true);
+  }
+}
 function cropPanBounds(viewW, viewH, imageW, imageH, zoom) {
   if (!(viewW > 0 && viewH > 0 && imageW > 0 && imageH > 0 && zoom > 0)) return { x: 0, y: 0 };
   const fit = Math.min(viewW / imageW, viewH / imageH);
   return { x: Math.max(0, (imageW * fit * zoom - viewW) / (2 * viewW) * 100),
            y: Math.max(0, (imageH * fit * zoom - viewH) / (2 * viewH) * 100) };
+}
+// The saved crop remains unchanged. Its visible position is clamped separately
+// for each card size, so switching sizes never introduces an invalid offset.
+function boundedItemCrop(item, plan, imageW = item.w, imageH = item.h) {
+  if (!item.crop) return null;
+  const zoom = Number.isFinite(item.crop.zoom) && item.crop.zoom > 0 ? item.crop.zoom : 1;
+  const v = cropViewport(plan, captionShown(item));
+  const bounds = cropPanBounds(v.w, v.h, imageW, imageH, zoom);
+  const clamp = (value, max) => Math.max(-max, Math.min(max, Number.isFinite(value) ? value : 0));
+  // Legacy items without dimensions can still be displayed until decoded.
+  if (!(imageW > 0 && imageH > 0)) return {zoom, x:item.crop.x || 0, y:item.crop.y || 0};
+  return {zoom, x:clamp(item.crop.x, bounds.x), y:clamp(item.crop.y, bounds.y)};
 }
 function clampCrop() {
   const stage = $('cropStage'), img = $('cropImage');
@@ -1324,14 +1430,18 @@ function drawCrop() {
   $('cropZoom').value = String(cropDraft.zoom);
   $('cropZoomValue').textContent = Math.round(cropDraft.zoom * 100) + '%';
 }
+let cropReturnFocus = null;
 function openCrop(item) {
+  cropReturnFocus = document.activeElement;
   cropItem = item;
   cropDraft = { ...(item.crop || { zoom: 1, x: 0, y: 0 }) };
   $('cropCaption').value = item.caption;
+  updateCaptionWarnings(layoutPlan());
   $('cropImage').src = item.url;
   $('cropDialog').hidden = false;
   document.body.style.overflow = 'hidden';
   sizeCropStage();
+  $('cropStage').focus();
   if ($('cropImage').complete && $('cropImage').naturalWidth) drawCrop();
   else $('cropImage').onload = () => { if (cropItem === item) drawCrop(); };
 }
@@ -1341,6 +1451,8 @@ function closeCrop() {
   document.body.style.overflow = '';
   cropItem = null;
   endCropDrag();
+  if (cropReturnFocus && cropReturnFocus.isConnected) cropReturnFocus.focus();
+  cropReturnFocus = null;
 }
 $('cropCancel').addEventListener('click', closeCrop);
 $('cropDialog').addEventListener('click', e => { if (e.target === $('cropDialog')) closeCrop(); });
@@ -1358,11 +1470,23 @@ $('cropApply').addEventListener('click', () => {
   syncPane();
 });
 $('cropZoom').addEventListener('input', e => { cropDraft.zoom = Number(e.target.value); drawCrop(); });
-$('cropCaption').addEventListener('input', () => { sizeCropStage(); drawCrop(); });
+$('cropCaption').addEventListener('input', () => { sizeCropStage(); drawCrop(); updateCaptionWarnings(layoutPlan()); });
 window.addEventListener('resize', () => { if (!$('cropDialog').hidden) { sizeCropStage(); drawCrop(); } });
 // Touch has a dedicated non-passive handler: iOS can cancel pointer drags while scrolling.
 let cropDrag = null;
 const cropStage = $('cropStage');
+cropStage.addEventListener('keydown', event => {
+  if (event.key === '+' || event.key === '=') cropDraft.zoom = Math.min(3,cropDraft.zoom+.05);
+  else if (event.key === '-') cropDraft.zoom = Math.max(.3,cropDraft.zoom-.05);
+  else if (event.key === 'ArrowLeft') cropDraft.x -= event.shiftKey ? 10 : 2;
+  else if (event.key === 'ArrowRight') cropDraft.x += event.shiftKey ? 10 : 2;
+  else if (event.key === 'ArrowUp') cropDraft.y -= event.shiftKey ? 10 : 2;
+  else if (event.key === 'ArrowDown') cropDraft.y += event.shiftKey ? 10 : 2;
+  else return;
+  event.preventDefault();
+  cropDraft.zoom = Math.round(cropDraft.zoom*100)/100;
+  drawCrop();
+});
 function beginCropDrag(x, y, kind, id) {
   cropDrag = { kind, id, x, y, a: cropDraft.x, b: cropDraft.y };
   cropStage.classList.add('dragging');
@@ -1411,9 +1535,78 @@ cropStage.addEventListener('pointermove', e => {
   cropStage.addEventListener(name, e => {
     if (cropDrag && cropDrag.kind === 'pointer' && cropDrag.id === e.pointerId) endCropDrag();
   }));
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('cropDialog').hidden) closeCrop(); });
+// Escape and focus trapping for dialogs are handled in one place below.
 function findItem(id) {
   return state.items.find(item => item.id === id);
+}
+// Keep notifications visible on every pane, including the mobile sheet view.
+const statusNode = $('status');
+let statusClearTimer = null;
+const statusObserver = new MutationObserver(() => {
+  clearTimeout(statusClearTimer);
+  const message = statusNode.textContent.trim();
+  if (!message) { statusNode.removeAttribute('data-level'); return; }
+  const isError = /не удалось|не получилось|не поддерживает|ошибк|отклон|слишком|неверн|неподдерживаем/i.test(message);
+  statusNode.dataset.level = isError ? 'error' : 'info';
+  // Errors and instructions remain until replaced by the next status message.
+  if (!isError && !/…|подготавлива|добавляю/i.test(message)) {
+    statusClearTimer = setTimeout(() => { statusNode.textContent = ''; }, 4000);
+  }
+});
+statusObserver.observe(statusNode, { childList: true, characterData: true, subtree: true });
+
+// Normalize large photos before storing them to reduce iPhone memory pressure.
+// Keep smaller originals intact, preserving PNG/WEBP transparency and image quality.
+async function normalizeUpload(blob, type) {
+  let bitmap = null;
+  let image = null;
+  let objectUrl = null;
+  try {
+    if (typeof createImageBitmap === 'function') {
+      try { bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' }); }
+      catch (_) { /* Older browsers may not support orientation options. */ }
+    }
+    if (!bitmap) {
+      objectUrl = URL.createObjectURL(blob);
+      image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(Error('Не удалось открыть изображение.'));
+        img.src = objectUrl;
+      });
+    }
+    const source = bitmap || image;
+    const w = source.naturalWidth || source.width;
+    const h = source.naturalHeight || source.height;
+    if (!w || !h) throw Error('Некорректный размер изображения.');
+    const limit = 3000;
+    const longest = Math.max(w, h);
+    if (longest <= limit) return { blob, w, h };
+    const scale = limit / longest;
+    const width = Math.max(1, Math.round(w * scale));
+    const height = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    try {
+      const context = canvas.getContext('2d');
+      if (!context) throw Error('Недоступна обработка изображения.');
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(source, 0, 0, width, height);
+      // PNG and WEBP may contain transparency, so never flatten them to JPEG.
+      const outputType = type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+      const resized = await new Promise((resolve, reject) =>
+        canvas.toBlob(result => result ? resolve(result) : reject(Error('Не удалось уменьшить изображение.')), outputType, 0.92));
+      return { blob: resized, w: width, h: height };
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  } finally {
+    if (bitmap) bitmap.close();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
 }
 async function addFiles(list) {
   const files = [...list];
@@ -1428,17 +1621,24 @@ async function addFiles(list) {
     try { type = await sniff(file); } catch (err) { type = ''; }
     if (!type) { rejected++; continue; }
     const blob = file.type === type ? file : new Blob([file], { type });
-    state.items.push({
-      id: String(++seq),
-      url: URL.createObjectURL(blob),
-      caption: '',
-      copies: 1
-    });
-    added++;
+    try {
+      const normalized = await normalizeUpload(blob, type);
+      state.items.push({
+        id: String(++seq),
+        url: URL.createObjectURL(normalized.blob),
+        w: normalized.w,
+        h: normalized.h,
+        caption: '',
+        copies: 1
+      });
+      added++;
+    } catch (error) {
+      rejected++;
+    }
   }
   const parts = [];
   if (added) parts.push('Добавлено: ' + added + ' шт.');
-  if (rejected) parts.push('Пропущено: ' + rejected + ' шт. Подойдут только PNG, JPG и WEBP.');
+  if (rejected) parts.push('Пропущено: ' + rejected + ' шт. Проверьте формат PNG, JPG или WEBP и целостность файла.');
   if (tooBig) parts.push('Не добавлены файлы больше 25 МБ: ' + tooBig + ' шт.');
   $('status').textContent = parts.join(' ') || 'Не удалось добавить файлы.';
   $('files').value = '';
@@ -1451,6 +1651,7 @@ async function addFiles(list) {
 }
 function resetAll() {
   state.items.forEach(item => URL.revokeObjectURL(item.url));
+  clearExportBitmapCache();
   state.items = [];
   selectedSheetItemId = null;
   state.sizeMode = '50';
@@ -1535,7 +1736,8 @@ function drawExportCaption(ctx, item, plan, x, y, dpi) {
   const capH = Math.max(6, Math.min(12, plan.card.h * .2));
   const large = plan.card.h >= 70;
   const fontMm = capH * (large ? .34 : .46);
-  const width = exportPixels(plan.card.w - 2.8, dpi);
+  const bw = borderWidth();
+  const width = exportPixels(plan.card.w - 2*bw - 2.8, dpi);
   ctx.fillStyle = '#2A2A2A';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -1544,10 +1746,10 @@ function drawExportCaption(ctx, item, plan, x, y, dpi) {
   const maxLines = large ? Math.max(1, Math.floor((capH - 1) / (fontMm * 1.15))) : 1;
   const lines = wrapExportCaption(ctx, item.caption, width, maxLines);
   const startX = exportPixels(x + plan.card.w / 2, dpi);
-  const startY = exportPixels(y + plan.card.h - capH, dpi);
+  const startY = exportPixels(y + plan.card.h - bw - capH, dpi);
   ctx.save();
   ctx.beginPath();
-  ctx.rect(exportPixels(x+1.4,dpi),startY,width,exportPixels(capH-1,dpi));
+  ctx.rect(exportPixels(x+bw+1.4,dpi),startY,width,exportPixels(capH-1,dpi));
   ctx.clip();
   lines.forEach((line,i) => ctx.fillText(line,startX,startY+i*lineHeight));
   ctx.restore();
@@ -1569,24 +1771,60 @@ async function loadExportImage(url) {
   if (!img.naturalWidth || !img.naturalHeight) throw Error('Не удалось открыть изображение.');
   return img;
 }
-async function prepareExportImages(pages) {
-  const unique = new Map();
-  for (const items of pages) for (const item of items) {
-    if (!unique.has(item.url)) unique.set(item.url, loadExportImage(item.url));
+// Keep only a few decoded images between exports. Others are released after each page.
+const EXPORT_BITMAP_CACHE_LIMIT = 4;
+const exportBitmapCache = new Map();
+function clearExportBitmapCache(url = null) {
+  for (const [key, bitmap] of exportBitmapCache) {
+    if (url !== null && key !== url) continue;
+    bitmap.close();
+    exportBitmapCache.delete(key);
   }
-  const resolved = new Map();
-  for (const [url, pending] of unique) resolved.set(url, await pending);
-  return resolved;
+}
+async function decodeExportImage(item) {
+  if (exportBitmapCache.has(item.url)) return {image:exportBitmapCache.get(item.url),temporary:false};
+  let image;
+  if (typeof createImageBitmap === 'function' && item.url.startsWith('blob:')) {
+    const response = await fetch(item.url);
+    if (!response.ok) throw Error('Не удалось открыть изображение.');
+    image = await createImageBitmap(await response.blob());
+  } else {
+    image = await loadExportImage(item.url);
+  }
+  if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap &&
+      exportBitmapCache.size < EXPORT_BITMAP_CACHE_LIMIT) {
+    exportBitmapCache.set(item.url, image);
+    return {image,temporary:false};
+  }
+  return {image,temporary:true};
+}
+async function prepareExportImages(pageItems) {
+  const images = new Map(), temporary = [];
+  try {
+    for (const item of pageItems) {
+      if (images.has(item.url)) continue;
+      const decoded = await decodeExportImage(item);
+      images.set(item.url, decoded.image);
+      if (decoded.temporary && typeof ImageBitmap !== 'undefined' &&
+          decoded.image instanceof ImageBitmap) temporary.push(decoded.image);
+    }
+    return {images,release:() => temporary.forEach(bitmap=>bitmap.close())};
+  } catch (error) {
+    temporary.forEach(bitmap=>bitmap.close());
+    throw error;
+  }
 }
 function drawExportCrop(ctx, item, plan, x, y, image, dpi) {
   const area = exportCropArea(plan, item, x, y);
   const sx = exportPixels(area.x,dpi), sy = exportPixels(area.y,dpi);
   const w = exportPixels(area.w,dpi), h = exportPixels(area.h,dpi);
-  const zoom = item.crop && Number.isFinite(item.crop.zoom) ? item.crop.zoom : 1;
-  const dx = item.crop && Number.isFinite(item.crop.x) ? item.crop.x : 0;
-  const dy = item.crop && Number.isFinite(item.crop.y) ? item.crop.y : 0;
-  const fit = Math.min(w / image.naturalWidth, h / image.naturalHeight);
-  const iw = image.naturalWidth * fit * zoom, ih = image.naturalHeight * fit * zoom;
+  const imageW = image.naturalWidth || image.width, imageH = image.naturalHeight || image.height;
+  const crop = boundedItemCrop(item, plan, imageW, imageH);
+  const zoom = crop ? crop.zoom : 1;
+  const dx = crop ? crop.x : 0;
+  const dy = crop ? crop.y : 0;
+  const fit = Math.min(w / imageW, h / imageH);
+  const iw = imageW * fit * zoom, ih = imageH * fit * zoom;
   ctx.save();
   ctx.beginPath(); ctx.rect(sx,sy,w,h); ctx.clip();
   ctx.drawImage(image, sx+(w-iw)/2+dx/100*w, sy+(h-ih)/2+dy/100*h, iw, ih);
@@ -1688,13 +1926,21 @@ function bytesFromBase64(base64) {
 async function buildPdfFile() {
   const plan=layoutPlan();
   if(plan.error || !state.items.length) throw Error(plan.error || 'Сначала добавьте изображения.');
-  const pages=splitPages(plan), images=await prepareExportImages(pages);
-  const jpegs=[];
+  const pages=splitPages(plan), jpegs=[];
   for(const pageItems of pages) {
-    const canvas=renderExportPage(pageItems,plan,images);
-    const jpeg=bytesFromBase64(canvas.toDataURL('image/jpeg',.9).split(',')[1]);
-    jpegs.push({width:canvas.width,height:canvas.height,bytes:jpeg});
-    canvas.width=0;canvas.height=0;
+    const decoded=await prepareExportImages(pageItems);
+    let canvas;
+    try {
+      canvas=renderExportPage(pageItems,plan,decoded.images);
+      const blob=await canvasAsBlob(canvas,'image/jpeg',.9);
+      const jpeg=new Uint8Array(await blob.arrayBuffer());
+      jpegs.push({width:canvas.width,height:canvas.height,bytes:jpeg});
+    } finally {
+      if (canvas) { canvas.width=0;canvas.height=0; }
+      decoded.release();
+    }
+    // Give mobile browsers a chance to process input between PDF pages.
+    await new Promise(resolve=>requestAnimationFrame(resolve));
   }
   return new File([pdfFromJpegs(jpegs,plan.page.w,plan.page.h)],
     'ADK-kartochki.pdf',{type:'application/pdf'});
@@ -1706,6 +1952,30 @@ function zipCrc32(data) {
     for(let j=0;j<8;j++)crc=(crc>>>1)^((crc&1)?0xEDB88320:0);
   }
   return (crc^-1)>>>0;
+}
+// Preserve physical print size in PNG files (180 DPI = 7087 pixels/metre).
+// The pHYs chunk goes directly after IHDR and uses the PNG big-endian CRC format.
+function pngWithPrintDensity(bytes) {
+  if (bytes.length < 33 || bytes[0] !== 137 || bytes[1] !== 80 ||
+      bytes[2] !== 78 || bytes[3] !== 71) throw Error('Некорректный PNG.');
+  const header = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  const ihdrLength = header.getUint32(8);
+  if (ihdrLength !== 13 ||
+      String.fromCharCode(...bytes.subarray(12,16)) !== 'IHDR') throw Error('Некорректный заголовок PNG.');
+  const insertAt = 8 + 12 + ihdrLength;
+  const chunk = new Uint8Array(21);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0,9);
+  chunk.set([112,72,89,115],4); // pHYs
+  view.setUint32(8,7087);
+  view.setUint32(12,7087);
+  chunk[16]=1; // pixels per metre
+  view.setUint32(17,zipCrc32(chunk.subarray(4,17)));
+  const result=new Uint8Array(bytes.length+chunk.length);
+  result.set(bytes.subarray(0,insertAt));
+  result.set(chunk,insertAt);
+  result.set(bytes.subarray(insertAt),insertAt+chunk.length);
+  return result;
 }
 function makeZip(files) {
   const encoder=new TextEncoder(), parts=[], central=[];
@@ -1735,13 +2005,19 @@ function makeZip(files) {
 async function buildPngFile() {
   const plan=layoutPlan();
   if(plan.error || !state.items.length) throw Error(plan.error || 'Сначала добавьте изображения.');
-  const pages=splitPages(plan),images=await prepareExportImages(pages),files=[];
+  const pages=splitPages(plan),files=[];
   for(let i=0;i<pages.length;i++){
-    const canvas=renderExportPage(pages[i],plan,images);
-    const blob=await canvasAsBlob(canvas,'image/png');
-    files.push({name:'ADK-list-'+String(i+1).padStart(2,'0')+'.png',
-      bytes:new Uint8Array(await blob.arrayBuffer())});
-    canvas.width=0;canvas.height=0;
+    const decoded=await prepareExportImages(pages[i]);
+    let canvas;
+    try {
+      canvas=renderExportPage(pages[i],plan,decoded.images);
+      const blob=await canvasAsBlob(canvas,'image/png');
+      files.push({name:'ADK-list-'+String(i+1).padStart(2,'0')+'.png',
+        bytes:pngWithPrintDensity(new Uint8Array(await blob.arrayBuffer()))});
+    } finally {
+      if (canvas) { canvas.width=0;canvas.height=0; }
+      decoded.release();
+    }
   }
   if(files.length===1)return new File([files[0].bytes],files[0].name,{type:'image/png'});
   return new File([makeZip(files)],'ADK-listy-PNG.zip',{type:'application/zip'});
@@ -1759,14 +2035,32 @@ let exportBusy=false;
 let sharePdfCache=null;
 let sharePdfRevision=0;
 let sharePdfTimer=0;
+// File sharing is not supported in every browser. Checking with a tiny dummy
+// PDF avoids decoding every photo just to discover that sharing is unavailable.
+function isEmbeddedBrowser() {
+  return /Telegram|Instagram|FBAN|FBAV|VKBrowser|VKontakte|VKApp/i.test(navigator.userAgent || '');
+}
+function supportsFileSharing() {
+  if (isEmbeddedBrowser()) return false;
+  if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false;
+  try {
+    return navigator.canShare({
+      files: [new File([''], 't.pdf', {type:'application/pdf'})]
+    }) === true;
+  } catch (_) {
+    return false;
+  }
+}
 function queueSharePdf() {
   const revision=++sharePdfRevision;
   sharePdfCache=null;
   clearTimeout(sharePdfTimer);
   const enabled=state.items.length>0 && !layoutPlan().error && slots().length>0;
+  const canShareFiles = supportsFileSharing();
+  $('sharePdf').disabled=!enabled || (canShareFiles && exportBusy);
+  $('sharePdf').textContent=enabled && canShareFiles?'Готовим PDF…':'Поделиться';
+  if(!enabled || !canShareFiles) return;
   $('sharePdf').disabled=true;
-  $('sharePdf').textContent=enabled?'Готовим PDF…':'Поделиться';
-  if(!enabled) return;
   sharePdfTimer=setTimeout(async()=>{
     try {
       const file=await buildPdfFile();
@@ -1780,10 +2074,18 @@ function queueSharePdf() {
       $('sharePdf').disabled=true;
       $('status').textContent='Не удалось подготовить PDF для отправки: '+(error?.message||'ошибка');
     }
-  },300);
+  },900);
 }
 async function exportAction(mode) {
   if(exportBusy || !state.items.length) return;
+  if(mode==='share' && isEmbeddedBrowser()) {
+    $('status').textContent='Откройте страницу в Safari или обычном браузере и нажимайте «Поделиться» внутри конструктора, а не в меню браузера.';
+    return;
+  }
+  if(mode==='share' && !supportsFileSharing()) {
+    $('status').textContent='Этот браузер не поддерживает отправку PDF. Нажмите «Скачать PDF» и отправьте файл из «Файлов». Используйте кнопку «Поделиться» внутри конструктора.';
+    return;
+  }
   if(mode==='share' && !sharePdfCache) {
     $('status').textContent='PDF ещё подготавливается. Нажмите «Поделиться», когда кнопка станет доступной.';
     return;
@@ -1793,11 +2095,13 @@ async function exportAction(mode) {
   controls.forEach(id=>{$(id).disabled=true;$(id).classList.add('export-busy');});
   $('status').textContent='Подготавливаю файл…';
   try {
-    const file=mode==='share'?sharePdfCache:(mode==='png'?await buildPngFile():await buildPdfFile());
+    // Reuse an already prepared, current PDF for downloads as well as sharing.
+    const file=mode==='share'?sharePdfCache:
+      (mode==='png'?await buildPngFile():(sharePdfCache || await buildPdfFile()));
     if(mode==='share'){
       if(navigator.canShare && navigator.canShare({files:[file]}) && navigator.share){
         try {
-          await navigator.share({files:[file],title:'Карточки АДК'});
+          await navigator.share({files:[file]});
           $('status').textContent='Открыто меню отправки файла.';
         } catch(error) {
           if(error.name==='AbortError'){ $('status').textContent='Отправка отменена.'; }
@@ -1809,7 +2113,8 @@ async function exportAction(mode) {
     } else {
       downloadExportFile(file);
       $('status').textContent=mode==='pdf'?'PDF скачан. Для печати используйте масштаб 100%.':
-        (file.type==='application/zip'?'Листы PNG скачаны одним ZIP-архивом.':'Лист PNG скачан.');
+        (file.type==='application/zip'?'Листы PNG скачаны одним ZIP-архивом.':'Лист PNG скачан.') +
+        ' Для точного размера печатайте PDF в масштабе 100%.';
     }
   } catch(error) {
     $('status').textContent='Не удалось создать файл: '+(error && error.message?error.message:'неизвестная ошибка');
@@ -1835,9 +2140,7 @@ $('bgHelpClose').addEventListener('click', closeBgHelp);
 $('bgHelp').addEventListener('click', event => {
   if (event.target === $('bgHelp')) closeBgHelp();
 });
-document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') closeBgHelp();
-});
+// Central keyboard handler below closes only the topmost overlay.
 $('pick').addEventListener('click', () => {
   $('files').value = '';
   $('files').click();
@@ -1957,6 +2260,7 @@ $('gallery').addEventListener('click', event => {
   if (!item) return;
   if (event.target.closest('.remove')) {
     URL.revokeObjectURL(item.url);
+    clearExportBitmapCache(item.url);
     state.items = state.items.filter(entry => entry !== item);
     $('status').textContent = 'Изображение убрано из набора.';
     renderGallery();
@@ -1991,7 +2295,25 @@ document.addEventListener('pointerdown', event => {
   if (!$('moreActions').contains(event.target)) $('moreActions').open = false;
 });
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') $('moreActions').open = false;
+  const cropOpen = !$('cropDialog').hidden;
+  const helpOpen = !$('bgHelp').hidden;
+  const activeDialog = cropOpen ? $('cropDialog') : (helpOpen ? $('bgHelp') : null);
+  if (event.key === 'Escape') {
+    if (cropOpen) closeCrop();
+    else if (helpOpen) closeBgHelp();
+    else $('moreActions').open = false;
+    return;
+  }
+  if (event.key !== 'Tab' || !activeDialog) return;
+  const focusable = [...activeDialog.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter(element => element.getClientRects().length > 0);
+  if (!focusable.length) { event.preventDefault(); return; }
+  const first = focusable[0],last = focusable[focusable.length - 1];
+  if (event.shiftKey && (document.activeElement === first || !activeDialog.contains(document.activeElement))) {
+    event.preventDefault(); last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !activeDialog.contains(document.activeElement))) {
+    event.preventDefault(); first.focus();
+  }
 });
 let scaleTimer = 0;
 function onViewportChange() {

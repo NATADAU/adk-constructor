@@ -1,0 +1,21 @@
+name: ADK review-fixes checks
+on:
+  push:
+    branches: [review-fixes]
+  pull_request:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run unit and syntax tests
+        run: node tests/run-tests.mjs
+      - name: Install browser test dependencies
+        run: |
+          npm install --no-save playwright@1.56.1
+      - name: Run browser tests
+        run: node tests/browser-e2e.mjs
