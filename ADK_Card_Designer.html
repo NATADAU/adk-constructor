@@ -1792,9 +1792,15 @@ async function buildPdfFile() {
   const jpegs=[];
   for(const pageItems of pages) {
     const canvas=renderExportPage(pageItems,plan,images);
-    const jpeg=bytesFromBase64(canvas.toDataURL('image/jpeg',.9).split(',')[1]);
-    jpegs.push({width:canvas.width,height:canvas.height,bytes:jpeg});
-    canvas.width=0;canvas.height=0;
+    try {
+      const blob=await canvasAsBlob(canvas,'image/jpeg',.9);
+      const jpeg=new Uint8Array(await blob.arrayBuffer());
+      jpegs.push({width:canvas.width,height:canvas.height,bytes:jpeg});
+    } finally {
+      canvas.width=0;canvas.height=0;
+    }
+    // Give mobile browsers a chance to process input between PDF pages.
+    await new Promise(resolve=>requestAnimationFrame(resolve));
   }
   return new File([pdfFromJpegs(jpegs,plan.page.w,plan.page.h)],
     'ADK-kartochki.pdf',{type:'application/pdf'});
