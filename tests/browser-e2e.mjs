@@ -347,6 +347,22 @@ try {
     assert.deepEqual(result.start,[137,80,78,71,13,10,26,10]);
     assert.ok(result.size>1000);
   });
+  await test('P2-6: PNG export embeds physical 180 DPI pHYs metadata and correct CRC', async () => {
+    const result=await page.evaluate(async () => {
+      const png=await buildPngFile();
+      const b=new Uint8Array(await png.arrayBuffer()),view=new DataView(b.buffer);
+      return {
+        type:png.type,length:view.getUint32(33),
+        chunk:String.fromCharCode(...b.subarray(37,41)),
+        x:view.getUint32(41),y:view.getUint32(45),unit:b[49],
+        actualCrc:view.getUint32(50),expectedCrc:zipCrc32(b.subarray(37,50))
+      };
+    });
+    assert.deepEqual(result,{
+      type:'image/png',length:9,chunk:'pHYs',x:7087,y:7087,unit:1,
+      actualCrc:result.expectedCrc,expectedCrc:result.expectedCrc
+    });
+  });
   await test('Multipage PNG export produces ZIP and PDF retains all pages', async () => {
     const result=await page.evaluate(async()=>{
       const previous=state.items[0].copies;
