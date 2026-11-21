@@ -1101,7 +1101,7 @@ function itemWord(n) {
 function setPrintEnabled(on) {
   $('print').disabled = !on;
   $('savePdf').disabled = !on;
-  $('sharePdf').disabled = !on || !sharePdfCache || exportBusy;
+  $('sharePdf').disabled = !on || exportBusy || (supportsFileSharing() && !sharePdfCache);
   $('savePng').disabled = !on;
 }
 function syncPrimaryActions() {
@@ -1909,14 +1909,28 @@ let exportBusy=false;
 let sharePdfCache=null;
 let sharePdfRevision=0;
 let sharePdfTimer=0;
+// File sharing is not supported in every browser. Checking with a tiny dummy
+// PDF avoids decoding every photo just to discover that sharing is unavailable.
+function supportsFileSharing() {
+  if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false;
+  try {
+    return navigator.canShare({
+      files: [new File([''], 't.pdf', {type:'application/pdf'})]
+    }) === true;
+  } catch (_) {
+    return false;
+  }
+}
 function queueSharePdf() {
   const revision=++sharePdfRevision;
   sharePdfCache=null;
   clearTimeout(sharePdfTimer);
   const enabled=state.items.length>0 && !layoutPlan().error && slots().length>0;
+  const canShareFiles = supportsFileSharing();
+  $('sharePdf').disabled=!enabled || (canShareFiles && exportBusy);
+  $('sharePdf').textContent=enabled && canShareFiles?'Готовим PDF…':'Поделиться';
+  if(!enabled || !canShareFiles) return;
   $('sharePdf').disabled=true;
-  $('sharePdf').textContent=enabled?'Готовим PDF…':'Поделиться';
-  if(!enabled) return;
   sharePdfTimer=setTimeout(async()=>{
     try {
       const file=await buildPdfFile();
@@ -1934,6 +1948,10 @@ function queueSharePdf() {
 }
 async function exportAction(mode) {
   if(exportBusy || !state.items.length) return;
+  if(mode==='share' && !supportsFileSharing()) {
+    $('status').textContent='Этот браузер не поддерживает отправку PDF. Нажмите «Скачать PDF» и отправьте файл из «Файлов».';
+    return;
+  }
   if(mode==='share' && !sharePdfCache) {
     $('status').textContent='PDF ещё подготавливается. Нажмите «Поделиться», когда кнопка станет доступной.';
     return;
