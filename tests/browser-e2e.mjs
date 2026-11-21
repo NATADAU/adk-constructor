@@ -99,7 +99,7 @@ try {
   await page.locator('#cropZoom').evaluate(el => { el.value='2'; el.dispatchEvent(new Event('input',{bubbles:true})); });
   await test('Can reduce image to 30% without changing card dimensions', async () => {
     const before=await page.evaluate(()=>({w:layoutPlan().card.w,h:layoutPlan().card.h}));
-    await page.locator('#cropZoom').fill('0.3');
+    await page.locator('#cropZoom').evaluate(el => { el.value='0.3'; el.dispatchEvent(new Event('input',{bubbles:true})); });
     const changed=await page.evaluate(()=>({
       zoom:cropDraft.zoom,
       transform:document.querySelector('#cropImage').style.transform,
@@ -119,7 +119,7 @@ try {
     assert.match(after.galleryTransform,/scale\(0\.3\)/);
     await page.locator('.mobile-nav [data-pane="images"]').click();
     await page.locator('.crop-btn').click();
-    await page.locator('#cropZoom').fill('2');
+    await page.locator('#cropZoom').evaluate(el => { el.value='2'; el.dispatchEvent(new Event('input',{bubbles:true})); });
   });
   await test('Cropping supports zooming', async () => {
     assert.match(await page.locator('#cropImage').getAttribute('style'),/scale\(2\)/);
