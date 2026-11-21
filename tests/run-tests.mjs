@@ -37,7 +37,7 @@ const state = { paper:'a4', orient:'portrait',sizeMode:'50',wCm:5,hCm:5,margin:1
   mode:'cards',items:[] };
 const ctx = createContext({ state, console });
 for (const name of ['normalizeCopies','pageMm','cardMm','borderWidth','cmLabel','layoutPlan',
-  'slots','splitPages','captionShown','cropViewport','cropPanBounds']) {
+  'slots','splitPages','captionShown','cropViewport','cropPanBounds','boundedItemCrop']) {
   new Script(extract(name)).runInContext(ctx);
 }
 const call = (name,...args) => ctx[name](...args);
@@ -81,6 +81,20 @@ test('Portrait image cannot pan horizontally at 100%', () => {
 test('Nonmatching aspect: pan only in occupied axis', () => {
   const b=call('cropPanBounds',100,100,100,200,2);
   assert.equal(b.x,0);assert.equal(b.y,50);
+});
+test('P1-3: saved crop is clamped only for the current card aspect ratio', () => {
+  const item={id:'crop',caption:'',copies:1,w:1600,h:900,crop:{zoom:1.6,x:0,y:30}};
+  const original={...item.crop};
+  state.sizeMode='custom';
+  state.wCm=10;state.hCm=5;
+  const horizontal=call('boundedItemCrop',item,call('layoutPlan'));
+  assert.ok(horizontal.y>0);
+  state.wCm=5;state.hCm=10;
+  const vertical=call('boundedItemCrop',item,call('layoutPlan'));
+  assert.equal(vertical.y,0);
+  assert.ok(vertical.x===0);
+  assert.deepEqual(item.crop,original);
+  state.sizeMode='50';state.wCm=5;state.hCm=5;
 });
 test('Invalid geometry is safe', () => {
   const b=call('cropPanBounds',0,100,100,200,2);
