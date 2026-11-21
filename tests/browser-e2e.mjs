@@ -153,28 +153,55 @@ try {
     assert.deepEqual(counts2,[3,2]);
     await page.evaluate(()=>{state.items=state.items.slice(0,1);state.items[0].copies=2;renderGallery();renderOutput();});
   });
-  await test('Dashed cut lines follow the exact card perimeter, no corner marks', async () => {
+  await test('Cut layout is one contiguous table with no gaps or empty cells', async () => {
     const result=await page.evaluate(()=>{
-      state.cutLines=true;state.gap=2;renderOutput();
-      const card=document.querySelector('#printRoot .sheet-card');
-      const guide=document.querySelector('#printRoot .cut-guide');
-      const style=getComputedStyle(guide);
-      return {
-        cardX:card.style.left,cardY:card.style.top,cardW:card.style.width,cardH:card.style.height,
-        guideX:guide.style.left,guideY:guide.style.top,guideW:guide.style.width,guideH:guide.style.height,
-        borderStyle:style.borderTopStyle,
-        oldCornerCount:document.querySelectorAll('#printRoot .cut-corner').length,
-        count:document.querySelectorAll('#printRoot .cut-guide').length
-      };
+      state.cutLines=true;state.gap=3;renderOutput();
+      const plan=layoutPlan(),pageCards=[...document.querySelectorAll('#printRoot .sheet-card')];
+      const marks=[...document.querySelectorAll('#printRoot .cut-grid-line')];
+      return {gap:plan.gap,cols:plan.cols,cardCount:pageCards.length,
+        secondX:pageCards[1].style.left,
+        firstX:pageCards[0].style.left,
+        cardWidth:plan.card.w,
+        marks:marks.length,segments:gridSegments(pageCards.length,plan),
+        extraCells:document.querySelectorAll('#printRoot .cut-corner, #printRoot .cut-guide').length,
+        borderStyles:marks.map(el=>getComputedStyle(el)[el.classList.contains('horizontal')?'borderTopStyle':'borderLeftStyle'])};
     });
-    assert.equal(result.count,2);
-    assert.equal(result.borderStyle,'dashed');
-    assert.equal(result.oldCornerCount,0);
-    for(const key of ['X','Y','W','H'])assert.equal(result['card'+key],result['guide'+key]);
+    assert.equal(result.gap,0);
+    assert.equal(result.secondX, (parseFloat(result.firstX)+result.cardWidth)+'mm');
+    assert.equal(result.extraCells,0);
+    assert.equal(result.marks,result.segments.length);
+    assert.ok(result.borderStyles.every(style=>style==='dashed'));
+    assert.equal(result.cardCount,2);
   });
-  await test('Turning off cut lines removes all cut guides', async () => {
+  await test('Incomplete bottom row has no phantom cells; print and PDF use same grid', async () => {
+    const result=await page.evaluate(()=>{
+      const plan=layoutPlan(), six=gridSegments(6,plan), seven=gridSegments(7,plan);
+      const lastRow=7-plan.cols;
+      const bottom=seven.filter(s=>s.direction==='horizontal').at(-1);
+      const penultimate=seven.filter(s=>s.direction==='horizontal').at(-2);
+      let drawn=0;
+      const fake={
+        save(){},restore(){},beginPath(){},moveTo(){},lineTo(){drawn++},stroke(){},
+        setLineDash(){},set strokeStyle(v){},set lineWidth(v){}
+      };
+      drawExportCutGrid(fake,plan,7,180);
+      return {six,seven,lastRow,bottom,penultimate,drawn,cols:plan.cols};
+    });
+    assert.equal(result.bottom.length,result.lastRow*50);
+    assert.equal(result.penultimate.length,result.cols*50);
+    assert.equal(result.drawn,result.seven.length);
+    assert.ok(result.seven.length>result.six.length);
+  });
+  await test('Disabling cut grid restores original card spacing and removes guides', async () => {
     await page.evaluate(()=>{state.cutLines=false;renderOutput();});
-    assert.equal(await page.locator('#printRoot .cut-guide').count(),0);
+    const result=await page.evaluate(()=>{
+      const plan=layoutPlan(),cards=[...document.querySelectorAll('#printRoot .sheet-card')];
+      return {gap:plan.gap,gridCount:document.querySelectorAll('#printRoot .cut-grid').length,
+        firstX:parseFloat(cards[0].style.left),secondX:parseFloat(cards[1].style.left),width:plan.card.w};
+    });
+    assert.equal(result.gridCount,0);
+    assert.equal(result.gap,3);
+    assert.equal(result.secondX-result.firstX,result.width+3);
     await page.evaluate(()=>{state.cutLines=true;renderOutput();});
   });
   await test('Actual PDF export has correct A4 page size and page count', async () => {
