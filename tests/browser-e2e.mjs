@@ -87,7 +87,7 @@ try {
   await page.locator('.mobile-nav [data-pane="images"]').click();
   await test('Image editor contains two clearly named actions, no copies stepper', async () => {
     const tile=page.locator('#gallery .tile').first();
-    assert.equal(await tile.getByRole('button',{name:'Изменить кадр изображения'}).count(),1);
+    assert.equal(await tile.getByRole('button',{name:'Изменить размер и кадр изображения'}).count(),1);
     assert.equal(await tile.getByRole('button',{name:'Удалить изображение из набора'}).count(),1);
     assert.equal(await tile.locator('.copy-input').count(),0);
   });
@@ -97,6 +97,30 @@ try {
     const size=await page.locator('#cropZoom').boundingBox();assert.ok(size?.height>=35);
   });
   await page.locator('#cropZoom').evaluate(el => { el.value='2'; el.dispatchEvent(new Event('input',{bubbles:true})); });
+  await test('Can reduce image to 30% without changing card dimensions', async () => {
+    const before=await page.evaluate(()=>({w:layoutPlan().card.w,h:layoutPlan().card.h}));
+    await page.locator('#cropZoom').fill('0.3');
+    const changed=await page.evaluate(()=>({
+      zoom:cropDraft.zoom,
+      transform:document.querySelector('#cropImage').style.transform,
+      pan:cropPanBounds(300,300,200,200,cropDraft.zoom)
+    }));
+    assert.equal(changed.zoom,0.3);
+    assert.match(changed.transform,/scale\(0\.3\)/);
+    assert.deepEqual(changed.pan,{x:0,y:0});
+    await page.locator('#cropApply').click();
+    const after=await page.evaluate(()=>({
+      w:layoutPlan().card.w,h:layoutPlan().card.h,
+      printTransform:document.querySelector('#printRoot .pic img').style.transform,
+      galleryTransform:document.querySelector('#gallery .tile-crop-viewport img').style.transform
+    }));
+    assert.deepEqual({w:after.w,h:after.h},before);
+    assert.match(after.printTransform,/scale\(0\.3\)/);
+    assert.match(after.galleryTransform,/scale\(0\.3\)/);
+    await page.locator('.mobile-nav [data-pane="images"]').click();
+    await page.locator('.crop-btn').click();
+    await page.locator('#cropZoom').fill('2');
+  });
   await test('Cropping supports zooming', async () => {
     assert.match(await page.locator('#cropImage').getAttribute('style'),/scale\(2\)/);
   });
