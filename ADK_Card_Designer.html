@@ -1357,7 +1357,7 @@ function captionOverflows(item, plan, forceVisible = false) {
   ctx.font = '700 ' + exportPixels(fontMm, 96) + 'px Arial, sans-serif';
   const maxLines = large ? Math.max(1, Math.floor((capH-1)/(fontMm*1.15))) : 1;
   const lines = wrapExportCaption(ctx,item.caption,width,maxLines);
-  return lines.join(' ') !== item.caption.trim().replace(/\\s+/g,' ');
+  return lines.join(' ') !== item.caption.trim().replace(/\s+/g,' ');
 }
 function updateCaptionWarnings(plan) {
   document.querySelectorAll('#gallery .tile').forEach(tile => {
