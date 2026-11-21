@@ -1147,14 +1147,15 @@ function renderOutput() {
   if (plan.error) {
     warn.hidden = false;
     warn.textContent = plan.error;
-    summary.textContent = paperName;
   } else {
     warn.hidden = true;
     warn.textContent = '';
-    summary.textContent = total
-      ? total + ' ' + itemWord(total) + ' · ' + pageList.length + ' ' + sheetWord(pageList.length) + ' · ' + paperName
-      : 'Добавьте изображения';
   }
+  // Announce totals to assistive technologies only when the numbers change.
+  const nextSummary = plan.error ? paperName :
+    (total ? total + ' ' + itemWord(total) + ' · ' + pageList.length + ' ' +
+      sheetWord(pageList.length) + ' · ' + paperName : 'Добавьте изображения');
+  if (summary.textContent !== nextSummary) summary.textContent = nextSummary;
   const largeSet = !plan.error && (pageList.length > 20 || state.items.length > 40);
   const largeSetNotice = $('largeSetNotice');
   largeSetNotice.hidden = !largeSet;
