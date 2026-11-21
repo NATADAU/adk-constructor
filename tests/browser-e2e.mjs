@@ -14,6 +14,11 @@ async function test(name, fn) {
 try {
   const page = await browser.newPage({viewport:{width:375,height:812},deviceScaleFactor:2,hasTouch:true,isMobile:true});
   await page.goto(pathToFileURL(resolve('ADK_Card_Designer.html')).href);
+  // Simulate a file-share-capable mobile browser for the existing iPhone tests.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator,'canShare',{configurable:true,value:input=>Array.isArray(input?.files)});
+    Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{}});
+  });
   await test('Mobile layout fits 320, 375 and 414px', async () => {
     for (const width of [320,375,414]) {
       await page.setViewportSize({width,height:812});
@@ -409,6 +414,34 @@ try {
     assert.equal(result.type,'application/pdf');
     assert.ok(result.size>1000);
     assert.equal(result.signature,'%PDF');
+  });
+  await test('P1-2e: unsupported browsers never prebuild PDF and show a helpful message', async () => {
+    await page.evaluate(() => {
+      window.__oldPdfBuilder = buildPdfFile;
+      window.__unsupportedPdfBuilds = 0;
+      buildPdfFile = async function() {
+        window.__unsupportedPdfBuilds++;
+        return window.__oldPdfBuilder();
+      };
+      Object.defineProperty(navigator,'canShare',{configurable:true,value:undefined});
+      Object.defineProperty(navigator,'share',{configurable:true,value:undefined});
+      state.items[0].caption='Проверка браузера без отправки';
+      renderOutput();
+    });
+    assert.equal(await page.locator('#sharePdf').isDisabled(),false);
+    await page.waitForTimeout(1150);
+    assert.equal(await page.evaluate(()=>window.__unsupportedPdfBuilds),0);
+    assert.equal(await page.evaluate(()=>sharePdfCache),null);
+    await page.locator('#sharePdf').click();
+    assert.match(await page.locator('#status').textContent(),/Этот браузер не поддерживает отправку PDF/);
+    assert.equal(await page.locator('#status').isVisible(),true);
+    await page.evaluate(() => {
+      buildPdfFile = window.__oldPdfBuilder;
+      delete window.__oldPdfBuilder;
+      Object.defineProperty(navigator,'canShare',{configurable:true,value:input=>Array.isArray(input?.files)});
+      Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{}});
+      renderOutput();
+    });
   });
   await test('P1-2b: rapid caption changes cause only one delayed PDF build', async () => {
     await page.waitForFunction(() => !!sharePdfCache && !document.querySelector('#sharePdf').disabled);
