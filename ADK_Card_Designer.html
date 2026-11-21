@@ -974,7 +974,8 @@ function buildCard(item, plan, x, y) {
   img.alt = item.caption.trim() || 'Изображение без подписи';
   img.src = item.url;
   pic.append(img);
-  if (item.crop) { img.style.transform = 'translate(' + item.crop.x + '%, ' + item.crop.y + '%) scale(' + item.crop.zoom + ')'; }
+  const effectiveCrop = boundedItemCrop(item, plan);
+  if (effectiveCrop) { img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')'; }
   card.append(pic);
   if (captionShown(item)) {
     const text = item.caption.trim();
@@ -1292,7 +1293,8 @@ function tileElement(item) {
   img.alt = '';
   img.draggable = false;
   img.src = item.url;
-  if (item.crop) img.style.transform = 'translate(' + item.crop.x + '%, ' + item.crop.y + '%) scale(' + item.crop.zoom + ')';
+  const effectiveCrop = boundedItemCrop(item, plan);
+  if (effectiveCrop) img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')';
   cropPreview.append(img);
   frame.append(cropPreview);
   const label = document.createElement('label');
@@ -1333,6 +1335,18 @@ function cropPanBounds(viewW, viewH, imageW, imageH, zoom) {
   const fit = Math.min(viewW / imageW, viewH / imageH);
   return { x: Math.max(0, (imageW * fit * zoom - viewW) / (2 * viewW) * 100),
            y: Math.max(0, (imageH * fit * zoom - viewH) / (2 * viewH) * 100) };
+}
+// The saved crop remains unchanged. Its visible position is clamped separately
+// for each card size, so switching sizes never introduces an invalid offset.
+function boundedItemCrop(item, plan, imageW = item.w, imageH = item.h) {
+  if (!item.crop) return null;
+  const zoom = Number.isFinite(item.crop.zoom) && item.crop.zoom > 0 ? item.crop.zoom : 1;
+  const v = cropViewport(plan, captionShown(item));
+  const bounds = cropPanBounds(v.w, v.h, imageW, imageH, zoom);
+  const clamp = (value, max) => Math.max(-max, Math.min(max, Number.isFinite(value) ? value : 0));
+  // Legacy items without dimensions can still be displayed until decoded.
+  if (!(imageW > 0 && imageH > 0)) return {zoom, x:item.crop.x || 0, y:item.crop.y || 0};
+  return {zoom, x:clamp(item.crop.x, bounds.x), y:clamp(item.crop.y, bounds.y)};
 }
 function clampCrop() {
   const stage = $('cropStage'), img = $('cropImage');
@@ -1725,10 +1739,11 @@ function drawExportCrop(ctx, item, plan, x, y, image, dpi) {
   const area = exportCropArea(plan, item, x, y);
   const sx = exportPixels(area.x,dpi), sy = exportPixels(area.y,dpi);
   const w = exportPixels(area.w,dpi), h = exportPixels(area.h,dpi);
-  const zoom = item.crop && Number.isFinite(item.crop.zoom) ? item.crop.zoom : 1;
-  const dx = item.crop && Number.isFinite(item.crop.x) ? item.crop.x : 0;
-  const dy = item.crop && Number.isFinite(item.crop.y) ? item.crop.y : 0;
   const imageW = image.naturalWidth || image.width, imageH = image.naturalHeight || image.height;
+  const crop = boundedItemCrop(item, plan, imageW, imageH);
+  const zoom = crop ? crop.zoom : 1;
+  const dx = crop ? crop.x : 0;
+  const dy = crop ? crop.y : 0;
   const fit = Math.min(w / imageW, h / imageH);
   const iw = imageW * fit * zoom, ih = imageH * fit * zoom;
   ctx.save();
