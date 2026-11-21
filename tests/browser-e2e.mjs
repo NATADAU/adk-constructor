@@ -361,6 +361,35 @@ try {
     assert.notEqual(shared?.activated,false,'Share must be called synchronously from the user tap');
     assert.ok(shared.size>1000);
   });
+  await test('P1-2d: decoded export image cache is bounded and released', async () => {
+    const results = await page.evaluate(async () => {
+      clearExportBitmapCache();
+      const canvas=document.createElement('canvas');
+      canvas.width=2; canvas.height=2;
+      const urls=[];
+      for (let i=0; i<5; i++) {
+        const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+        urls.push(URL.createObjectURL(blob));
+      }
+      try {
+        const items=urls.map((url,id)=>({id:String(id),url}));
+        const decoded=await prepareExportImages(items);
+        const cached=exportBitmapCache.size;
+        const last=decoded.images.get(urls[4]);
+        const before=last.width;
+        decoded.release();
+        const released=last.width;
+        clearExportBitmapCache(urls[0]);
+        const afterRemoval=exportBitmapCache.size;
+        clearExportBitmapCache();
+        return {cached,before,released,afterRemoval,final:exportBitmapCache.size};
+      } finally {
+        clearExportBitmapCache();
+        urls.forEach(url=>URL.revokeObjectURL(url));
+      }
+    });
+    assert.deepEqual(results,{cached:4,before:2,released:0,afterRemoval:3,final:0});
+  });
   await test('P1-2c: PDF export uses Blob encoding rather than synchronous data URL', async () => {
     const result=await page.evaluate(async () => {
       const original=HTMLCanvasElement.prototype.toDataURL;
