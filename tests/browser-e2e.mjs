@@ -415,6 +415,44 @@ try {
     assert.ok(result.size>1000);
     assert.equal(result.signature,'%PDF');
   });
+  await test('P1-4a: long two-line captions are clamped and export is inset by border', async () => {
+    const result=await page.evaluate(() => {
+      const item=state.items[0], oldCaption=item.caption, oldLabels=state.showLabels;
+      const original={sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm,border:state.border};
+      try {
+        state.sizeMode='custom';state.wCm=5;state.hCm=10;state.border='normal';
+        state.showLabels=true;
+        item.caption='Очень длинная подпись которая не должна обрезать третью строку посередине: требуется ограничение в две строки';
+        renderOutput();
+        const cap=document.querySelector('#printRoot .cap');
+        const css=getComputedStyle(cap);
+        const plan=layoutPlan(),bw=borderWidth();
+        const captured=[];
+        const ctx={
+          measureText(text){return {width:text.length*5};},
+          save(){},beginPath(){},rect(...args){captured.push(args);},clip(){},
+          fillText(){},restore(){},
+          set fillStyle(v){},set textAlign(v){},set textBaseline(v){},set font(v){}
+        };
+        drawExportCaption(ctx,item,plan,0,0,180);
+        const mmToPixels=(mm)=>exportPixels(mm,180);
+        return {
+          clamp:css.webkitLineClamp,display:css.display,
+          clip:captured[0],
+          expectedX:mmToPixels(bw+1.4),
+          expectedY:mmToPixels(plan.card.h-bw-Math.max(6,Math.min(12,plan.card.h*.2))),
+          expectedW:mmToPixels(plan.card.w-2*bw-2.8)
+        };
+      } finally {
+        item.caption=oldCaption;state.showLabels=oldLabels;Object.assign(state,original);renderOutput();
+      }
+    });
+    assert.equal(result.clamp,'2');
+    assert.equal(result.display,'flow-root'===result.display?'flow-root':'-webkit-box');
+    assert.ok(Math.abs(result.clip[0]-result.expectedX)<.05,JSON.stringify(result));
+    assert.ok(Math.abs(result.clip[1]-result.expectedY)<.05,JSON.stringify(result));
+    assert.ok(Math.abs(result.clip[2]-result.expectedW)<.05,JSON.stringify(result));
+  });
   await test('P1-3: resizing a card clamps its visible crop without changing the saved crop', async () => {
     const result=await page.evaluate(() => {
       const item=state.items[0], oldCrop=item.crop, oldW=item.w, oldH=item.h;
