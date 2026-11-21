@@ -361,6 +361,26 @@ try {
     assert.notEqual(shared?.activated,false,'Share must be called synchronously from the user tap');
     assert.ok(shared.size>1000);
   });
+  await test('P1-2c: PDF export uses Blob encoding rather than synchronous data URL', async () => {
+    const result=await page.evaluate(async () => {
+      const original=HTMLCanvasElement.prototype.toDataURL;
+      let called=false;
+      HTMLCanvasElement.prototype.toDataURL=function() {
+        called=true;
+        throw Error('Synchronous data URL should not be used for PDF');
+      };
+      try {
+        const file=await buildPdfFile();
+        return {called,type:file.type,size:file.size,signature:await file.slice(0,4).text()};
+      } finally {
+        HTMLCanvasElement.prototype.toDataURL=original;
+      }
+    });
+    assert.equal(result.called,false);
+    assert.equal(result.type,'application/pdf');
+    assert.ok(result.size>1000);
+    assert.equal(result.signature,'%PDF');
+  });
   await test('P1-2b: rapid caption changes cause only one delayed PDF build', async () => {
     await page.waitForFunction(() => !!sharePdfCache && !document.querySelector('#sharePdf').disabled);
     await page.evaluate(() => {
