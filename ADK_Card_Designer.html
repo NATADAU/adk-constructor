@@ -1455,6 +1455,59 @@ const statusObserver = new MutationObserver(() => {
 });
 statusObserver.observe(statusNode, { childList: true, characterData: true, subtree: true });
 
+// Normalize large photos before storing them to reduce iPhone memory pressure.
+// Keep smaller originals intact, preserving PNG/WEBP transparency and image quality.
+async function normalizeUpload(blob, type) {
+  let bitmap = null;
+  let image = null;
+  let objectUrl = null;
+  try {
+    if (typeof createImageBitmap === 'function') {
+      try { bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' }); }
+      catch (_) { /* Older browsers may not support orientation options. */ }
+    }
+    if (!bitmap) {
+      objectUrl = URL.createObjectURL(blob);
+      image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(Error('Не удалось открыть изображение.'));
+        img.src = objectUrl;
+      });
+    }
+    const source = bitmap || image;
+    const w = source.naturalWidth || source.width;
+    const h = source.naturalHeight || source.height;
+    if (!w || !h) throw Error('Некорректный размер изображения.');
+    const limit = 3000;
+    const longest = Math.max(w, h);
+    if (longest <= limit) return { blob, w, h };
+    const scale = limit / longest;
+    const width = Math.max(1, Math.round(w * scale));
+    const height = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    try {
+      const context = canvas.getContext('2d');
+      if (!context) throw Error('Недоступна обработка изображения.');
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(source, 0, 0, width, height);
+      // PNG and WEBP may contain transparency, so never flatten them to JPEG.
+      const outputType = type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+      const resized = await new Promise((resolve, reject) =>
+        canvas.toBlob(result => result ? resolve(result) : reject(Error('Не удалось уменьшить изображение.')), outputType, 0.92));
+      return { blob: resized, w: width, h: height };
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  } finally {
+    if (bitmap) bitmap.close();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
 async function addFiles(list) {
   const files = [...list];
   if (!files.length) return;
@@ -1468,17 +1521,24 @@ async function addFiles(list) {
     try { type = await sniff(file); } catch (err) { type = ''; }
     if (!type) { rejected++; continue; }
     const blob = file.type === type ? file : new Blob([file], { type });
-    state.items.push({
-      id: String(++seq),
-      url: URL.createObjectURL(blob),
-      caption: '',
-      copies: 1
-    });
-    added++;
+    try {
+      const normalized = await normalizeUpload(blob, type);
+      state.items.push({
+        id: String(++seq),
+        url: URL.createObjectURL(normalized.blob),
+        w: normalized.w,
+        h: normalized.h,
+        caption: '',
+        copies: 1
+      });
+      added++;
+    } catch (error) {
+      rejected++;
+    }
   }
   const parts = [];
   if (added) parts.push('Добавлено: ' + added + ' шт.');
-  if (rejected) parts.push('Пропущено: ' + rejected + ' шт. Подойдут только PNG, JPG и WEBP.');
+  if (rejected) parts.push('Пропущено: ' + rejected + ' шт. Проверьте формат PNG, JPG или WEBP и целостность файла.');
   if (tooBig) parts.push('Не добавлены файлы больше 25 МБ: ' + tooBig + ' шт.');
   $('status').textContent = parts.join(' ') || 'Не удалось добавить файлы.';
   $('files').value = '';
