@@ -160,6 +160,23 @@ try {
     assert.equal(measurement.border,'0px');
     assert.equal(measurement.background,'rgb(255, 255, 255)');
   });
+  await test('P2-3: crop editor receives focus, traps Tab, and accepts keyboard panning', async () => {
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'cropStage');
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'cropApply');
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'cropStage');
+    await page.locator('#cropZoom').evaluate(el => {
+      el.value='2';el.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await page.locator('#cropStage').focus();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Shift+ArrowRight');
+    await page.keyboard.press('Equal');
+    const crop=await page.evaluate(()=>({...cropDraft}));
+    assert.ok(crop.x>=10,JSON.stringify(crop));
+    assert.ok(crop.zoom>2,JSON.stringify(crop));
+  });
   await test('Crop dialog and large visible slider are available', async () => {
     assert.equal(await page.locator('#cropDialog').isVisible(),true);
     const size=await page.locator('#cropZoom').boundingBox();assert.ok(size?.height>=35);
@@ -210,6 +227,13 @@ try {
     assert.equal(await page.locator('#backToImages').isVisible(),true);
     await page.locator('#backToImages').click();
     assert.equal(await page.locator('#dropZone').getAttribute('data-pane'),'images');
+  });
+  await test('P2-3: Escape closes crop editor and restores focus', async () => {
+    const button=page.locator('#gallery .crop-btn').first();
+    await button.click();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#cropDialog').isVisible(),false);
+    assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains('crop-btn')),true);
   });
   await test('Gallery thumbnail reflects applied crop', async () => {
     const galleryImage=page.locator('#gallery .tile-crop-viewport img').first();
