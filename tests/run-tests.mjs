@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 import { Script, createContext } from 'node:vm';
-const html = readFileSync(new URL('../ADK_Card_Designer.html', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const script = html.split('<script>')[1]?.split('</script>')[0];
 assert.ok(script, 'Application script exists');
 new Script(script); // syntax check

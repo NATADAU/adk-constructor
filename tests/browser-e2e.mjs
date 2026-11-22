@@ -13,7 +13,7 @@ async function test(name, fn) {
 }
 try {
   const page = await browser.newPage({viewport:{width:375,height:812},deviceScaleFactor:2,hasTouch:true,isMobile:true});
-  await page.goto(pathToFileURL(resolve('ADK_Card_Designer.html')).href);
+  await page.goto(pathToFileURL(resolve('index.html')).href);
   // Simulate a file-share-capable mobile browser for the existing iPhone tests.
   await page.evaluate(() => {
     Object.defineProperty(navigator,'canShare',{configurable:true,value:input=>Array.isArray(input?.files)});
