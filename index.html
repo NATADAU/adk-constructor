@@ -601,6 +601,11 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .crop-actions .crop-apply { background: #019BAB; color: #fff; border-color: #019BAB; }
 @media print { .crop-dialog { display: none !important; } }
 .export-busy { opacity: .7; cursor: progress !important; }
+
+/* Two independent columns for connect-the-pairs worksheets. */
+.tile-placement {display:flex;align-items:center;gap:8px;margin:8px 0 4px;flex-wrap:wrap;font-weight:600;}
+.tile-placement .control {max-width:180px;}
+.tile-placement[hidden] {display:none;}
 </style>
 <style id="pageCss"></style>
 </head>
@@ -638,8 +643,10 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
           <div class="chips mode-chips" role="group" aria-label="Режим работы">
             <button type="button" class="chip" data-mode="pictures">Картинки</button>
             <button type="button" class="chip active" data-mode="cards" aria-pressed="true">Карточки</button>
+            <button type="button" class="chip" data-mode="matching" aria-pressed="false">Соедини линиями</button>
           </div>
         </div>
+        <p id="matchingHelp" class="size-now" hidden>Назначьте каждой картинке сторону: слева или справа. Середина листа останется пустой, чтобы провести линии. Для удобства попробуйте альбомный лист.</p>
         <div class="settings-grid">
           <div>
             <span class="group-title" id="sizeTitle">Размер карточки</span>
@@ -856,26 +863,35 @@ function layoutPlan() {
   const page = pageMm();
   const card = cardMm();
   const margin = state.margin;
-  const gap = state.cutLines ? 0 : state.gap;
+  const matching = state.mode === 'matching';
+  const gap = !matching && state.cutLines ? 0 : state.gap;
   const innerW = page.w - margin * 2;
   const innerH = page.h - margin * 2;
   const base = { page, card, margin, gap, cols: 0, rows: 0, perSheet: 0, error: '' };
+  if (matching && 2 * card.w + 25 > innerW + 0.01) {
+    base.error = 'Для двух колонок и пространства между ними нужен более широкий лист или меньший размер карточек. Попробуйте альбомный формат.';
+    return base;
+  }
   if (card.w > innerW + 0.01 || card.h > innerH + 0.01) {
     base.error = 'Размер ' + cmLabel(card.w) + ' × ' + cmLabel(card.h) + ' см не помещается на лист ' + (state.paper === 'a3' ? 'А3' : 'А4') + ' с полями ' + margin + ' мм. Уменьшите размер или поля либо выберите лист побольше.';
     return base;
   }
   const cols = Math.floor((innerW + gap) / (card.w + gap));
   const rows = Math.floor((innerH + gap) / (card.h + gap));
-  base.cols = cols;
+  base.cols = matching ? 2 : cols;
   base.rows = rows;
-  base.perSheet = cols * rows;
+  base.perSheet = matching ? rows * 2 : cols * rows;
   if (!base.perSheet) base.error = 'Не удалось разложить элементы на листе. Измените размер или поля.';
   return base;
 }
 function slots() {
   const list = [];
-  state.items.forEach(item => {
-    const n = normalizeCopies(item.copies);
+  const items = state.mode === 'matching'
+    ? state.items.filter(item=>item.side === 'left').concat(state.items.filter(item=>item.side === 'right'))
+    : state.items;
+  items.forEach(item => {
+    if (state.mode === 'matching' && item.side !== 'left' && item.side !== 'right') return;
+    const n = state.mode === 'matching' ? 1 : normalizeCopies(item.copies);
     for (let i = 0; i < n; i++) list.push(item);
   });
   return list;
@@ -884,8 +900,32 @@ function splitPages(plan) {
   const all = slots();
   const pages = [];
   if (!plan.perSheet) return pages;
+  if (state.mode === 'matching') {
+    const left=all.filter(item=>item.side==='left');
+    const right=all.filter(item=>item.side==='right');
+    const count=Math.ceil(Math.max(left.length,right.length)/plan.rows);
+    for(let p=0;p<count;p++) {
+      pages.push(left.slice(p*plan.rows,(p+1)*plan.rows)
+        .concat(right.slice(p*plan.rows,(p+1)*plan.rows)));
+    }
+    return pages;
+  }
   for (let i = 0; i < all.length; i += plan.perSheet) pages.push(all.slice(i, i + plan.perSheet));
   return pages;
+}
+function cardPosition(item,index,pageItems,plan) {
+  if (state.mode === 'matching') {
+    const side=item.side;
+    const preceding=pageItems.slice(0,index).filter(other=>other.side===side).length;
+    return {
+      x:side==='right' ? plan.page.w-plan.margin-plan.card.w : plan.margin,
+      y:plan.margin+preceding*(plan.card.h+plan.gap)
+    };
+  }
+  return {
+    x:plan.margin+(index%plan.cols)*(plan.card.w+plan.gap),
+    y:plan.margin+Math.floor(index/plan.cols)*(plan.card.h+plan.gap)
+  };
 }
 function captionShown(item) {
   return state.showLabels && !!item.caption.trim();
@@ -895,6 +935,7 @@ function structureKey(plan) {
   const caps = state.items.map(item => captionShown(item) ? '1' : '0').join('');
   return [
     state.mode, plan.page.w, plan.page.h, plan.card.w, plan.card.h, plan.margin, plan.gap,
+    state.mode === 'matching' ? state.items.map(item=>item.id+':'+(item.side||'none')).join(',') : '',
     plan.cols, plan.rows, borderWidth(), safeColor(state.borderColor),
     state.showLabels ? '1' : '0', state.cutLines ? '1' : '0',
     plan.error, ids, caps
@@ -936,6 +977,7 @@ function syncModeButtons() {
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
   $('sizeTitle').textContent = state.mode === 'pictures' ? 'Размер изображения' : 'Размер карточки';
+  $('matchingHelp').hidden = state.mode !== 'matching';
 }
 function syncFormControls() {
   $('border').value = state.border;
@@ -943,7 +985,9 @@ function syncFormControls() {
   $('borderColor').disabled = state.border === 'none';
   $('showLabels').checked = state.showLabels;
   $('cutLines').checked = state.cutLines;
-  $('gap').disabled = state.cutLines;
+  $('cutLines').disabled = state.mode === 'matching';
+  $('cutLines').closest('.cut-row').hidden = state.mode === 'matching';
+  $('gap').disabled = state.cutLines && state.mode !== 'matching';
   $('gap').title = state.cutLines ? 'При включённой сетке карточки располагаются вплотную' : '';
 }
 function syncPane() {
@@ -965,6 +1009,11 @@ function applyModeDefaults(mode) {
     state.border = 'normal';
     state.showLabels = true;
     state.cutLines = false;
+  }
+  if (mode === 'matching') {
+    // Do not silently fill a side: the educator chooses each assignment.
+    state.orient = 'landscape';
+    $('orient').value = state.orient;
   }
   syncModeButtons();
   syncFormControls();
@@ -1041,13 +1090,10 @@ function buildSheet(pageItems, plan) {
   sheet.style.width = plan.page.w + 'mm';
   sheet.style.height = plan.page.h + 'mm';
   pageItems.forEach((item, index) => {
-    const col = index % plan.cols;
-    const row = Math.floor(index / plan.cols);
-    const x = plan.margin + col * (plan.card.w + plan.gap);
-    const y = plan.margin + row * (plan.card.h + plan.gap);
+    const {x,y} = cardPosition(item,index,pageItems,plan);
     sheet.append(buildCard(item, plan, x, y));
   });
-  if (state.cutLines && pageItems.length) sheet.append(buildCutGrid(pageItems.length,plan));
+  if (state.mode !== 'matching' && state.cutLines && pageItems.length) sheet.append(buildCutGrid(pageItems.length,plan));
   return sheet;
 }
 function previewScale(pageWmm, pageHmm) {
@@ -1088,7 +1134,7 @@ function applyScale() {
   });
 }
 function syncCaptionText() {
-  const all = slots();
+  const all = splitPages(layoutPlan()).flat();
   ['preview', 'printRoot'].forEach(id => {
     $(id).querySelectorAll('.sheet-card').forEach((card, index) => {
       const cap = card.querySelector('.cap');
@@ -1097,7 +1143,7 @@ function syncCaptionText() {
   });
 }
 function captionsNeedRebuild() {
-  const all = slots();
+  const all = splitPages(layoutPlan()).flat();
   const cards = $('printRoot').querySelectorAll('.sheet-card');
   if (cards.length !== all.length) return true;
   for (let i = 0; i < all.length; i++) {
@@ -1133,6 +1179,8 @@ function renderOutput() {
   syncGalleryCropPreviews(plan);
   $('pageCss').textContent = '@page{size:' + plan.page.w + 'mm ' + plan.page.h + 'mm;margin:0;}';
   $('sizeNow').textContent = 'На бумаге: ' + cmLabel(plan.card.w) + ' × ' + cmLabel(plan.card.h) + ' см';
+  $('sheetQuantity').hidden = state.mode === 'matching';
+  document.querySelectorAll('#gallery .tile-placement').forEach(el=>{el.hidden=state.mode!=='matching';});
   if (key === lastKey && !plan.error && !captionsNeedRebuild()) {
     syncCaptionText();
     applyScale();
@@ -1154,7 +1202,7 @@ function renderOutput() {
   // Announce totals to assistive technologies only when the numbers change.
   const nextSummary = plan.error ? paperName :
     (total ? total + ' ' + itemWord(total) + ' · ' + pageList.length + ' ' +
-      sheetWord(pageList.length) + ' · ' + paperName : 'Добавьте изображения');
+      sheetWord(pageList.length) + ' · ' + paperName + (state.mode === 'matching' ? ' · две колонки' : '') : 'Добавьте изображения');
   if (summary.textContent !== nextSummary) summary.textContent = nextSummary;
   const largeSet = !plan.error && (pageList.length > 20 || state.items.length > 40);
   const largeSetNotice = $('largeSetNotice');
@@ -1185,6 +1233,8 @@ function renderOutput() {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent = plan.error ? 'Лист появится, когда размер поместится на бумагу.' : 'Здесь будет лист для печати.';
+    if (state.mode === 'matching' && !plan.error && state.items.length && !total)
+      empty.textContent = 'Укажите для картинок «Слева» или «Справа» в разделе «Изображения».';
     preview.append(empty);
     return;
   }
@@ -1217,7 +1267,7 @@ function syncSheetQuantity() {
   const host = $('sheetQuantity');
   const select = $('sheetImageSelect');
   const active = selectedSheetItem();
-  host.hidden = !active;
+  host.hidden = !active || state.mode === 'matching';
   if (!active) {
     selectedSheetItemId = null;
     select.replaceChildren();
@@ -1341,6 +1391,19 @@ function tileElement(item) {
   captionWarning.className = 'caption-warning';
   captionWarning.hidden = true;
   captionWarning.textContent = 'Подпись не помещается полностью — сократите текст или увеличьте карточку.';
+  const placement = document.createElement('label');
+  placement.className = 'tile-placement';
+  placement.append('На листе ');
+  const sideSelect = document.createElement('select');
+  sideSelect.className = 'control side-select';
+  sideSelect.setAttribute('aria-label','Расположение изображения на листе');
+  [['none','Не использовать'],['left','Слева'],['right','Справа']].forEach(([value,title])=>{
+    const option=document.createElement('option');option.value=value;option.textContent=title;
+    sideSelect.append(option);
+  });
+  sideSelect.value=item.side || 'none';
+  placement.append(sideSelect);
+  placement.hidden=state.mode!=='matching';
   const actions = document.createElement('div');
   actions.className = 'tile-actions';
   const cropBtn = document.createElement('button');
@@ -1354,7 +1417,7 @@ function tileElement(item) {
   remove.textContent = 'Удалить изображение';
   remove.setAttribute('aria-label','Удалить изображение из набора');
   actions.append(cropBtn,remove);
-  tile.append(frame, label, captionWarning, actions);
+  tile.append(frame, label, placement, captionWarning, actions);
   return tile;
 }
 let cropItem = null;
@@ -1862,14 +1925,12 @@ function renderExportPage(items, plan, images, dpi=EXPORT_DPI) {
   if (!ctx) throw Error('Браузер не смог создать лист для экспорта.');
   ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
   items.forEach((item,index)=>{
-    const col=index%plan.cols,row=Math.floor(index/plan.cols);
-    const x=plan.margin+col*(plan.card.w+plan.gap);
-    const y=plan.margin+row*(plan.card.h+plan.gap);
+    const {x,y}=cardPosition(item,index,items,plan);
     drawExportCrop(ctx,item,plan,x,y,images.get(item.url),dpi);
     drawExportCaption(ctx,item,plan,x,y,dpi);
     drawExportBorder(ctx,plan,x,y,dpi);
   });
-  drawExportCutGrid(ctx,plan,items.length,dpi);
+  if (state.mode !== 'matching') drawExportCutGrid(ctx,plan,items.length,dpi);
   return canvas;
 }
 function canvasAsBlob(canvas,type,quality) {
@@ -2208,6 +2269,7 @@ document.querySelector('.mode-chips').addEventListener('click', event => {
   const btn = event.target.closest('[data-mode]');
   if (!btn || btn.dataset.mode === state.mode) return;
   applyModeDefaults(btn.dataset.mode);
+  renderGallery();
   renderOutput();
 });
 $('sizeChips').addEventListener('click', event => {
@@ -2308,6 +2370,10 @@ $('gallery').addEventListener('input', event => {
   if (!tile) return;
   const item = findItem(tile.dataset.id);
   if (!item) return;
+  if (event.target.classList.contains('side-select')) {
+    item.side=event.target.value;
+    renderOutput();
+  }
   if (event.target.classList.contains('cap-input')) {
     item.caption = event.target.value;
     if (item.caption.trim() && !state.showLabels) { state.showLabels = true; $('showLabels').checked = true; }
