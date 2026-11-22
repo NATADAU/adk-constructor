@@ -891,7 +891,7 @@ function slots() {
     : state.items;
   items.forEach(item => {
     if (state.mode === 'matching' && item.side !== 'left' && item.side !== 'right') return;
-    const n = normalizeCopies(item.copies);
+    const n = state.mode === 'matching' ? 1 : normalizeCopies(item.copies);
     for (let i = 0; i < n; i++) list.push(item);
   });
   return list;
@@ -1233,6 +1233,8 @@ function renderOutput() {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent = plan.error ? 'Лист появится, когда размер поместится на бумагу.' : 'Здесь будет лист для печати.';
+    if (state.mode === 'matching' && !plan.error && state.items.length && !total)
+      empty.textContent = 'Укажите для картинок «Слева» или «Справа» в разделе «Изображения».';
     preview.append(empty);
     return;
   }
