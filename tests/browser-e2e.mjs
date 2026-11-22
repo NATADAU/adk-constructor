@@ -742,6 +742,45 @@ try {
     const display=await page.locator('#cardsPanel').evaluate(el=>getComputedStyle(el).display);
     assert.notEqual(display,'none');
   });
+  await test('Matching worksheets let the educator choose left/right and keep center blank', async () => {
+    await page.locator('.mode-chips [data-mode="matching"]').click();
+    const setup=await page.evaluate(()=>{
+      state.items[0].copies=1;
+      const original=state.items[0];
+      state.items=[
+        {...original,id:'match-left',caption:'Животное',side:'left',copies:1},
+        {...original,id:'match-right',caption:'Детёныш',side:'right',copies:1}
+      ];
+      renderGallery();renderOutput();
+      const plan=layoutPlan();
+      const positions=[...document.querySelectorAll('#printRoot .sheet-card')].map(card=>({
+        x:parseFloat(card.style.left),y:parseFloat(card.style.top),w:parseFloat(card.style.width)
+      }));
+      return {mode:state.mode,orient:state.orient,positions,pageW:plan.page.w,
+        margin:plan.margin,cutCount:document.querySelectorAll('#printRoot .cut-grid-line').length,
+        sides:[...document.querySelectorAll('#gallery .side-select')].map(el=>el.value)};
+    });
+    assert.equal(setup.mode,'matching');
+    assert.equal(setup.orient,'landscape');
+    assert.deepEqual(setup.sides,['left','right']);
+    assert.equal(setup.positions.length,2);
+    assert.equal(setup.positions[0].x,setup.margin);
+    assert.ok(Math.abs(setup.positions[1].x-(setup.pageW-setup.margin-setup.positions[1].w))<.01);
+    assert.ok(setup.positions[1].x-setup.positions[0].x-setup.positions[0].w>=25);
+    assert.equal(setup.cutCount,0);
+    const pdf=await page.evaluate(async()=>{
+      const file=await buildPdfFile(); const bytes=new Uint8Array(await file.arrayBuffer());
+      return {type:file.type,signature:new TextDecoder('latin1').decode(bytes.slice(0,4)),size:bytes.length};
+    });
+    assert.equal(pdf.type,'application/pdf');
+    assert.equal(pdf.signature,'%PDF');
+    assert.ok(pdf.size>2000);
+    await page.locator('#gallery .side-select').first().selectOption('none');
+    assert.equal(await page.locator('#printRoot .sheet-card').count(),1);
+    await page.locator('.mode-chips [data-mode="cards"]').click();
+    assert.equal(await page.locator('#printRoot .sheet-card').count(),2);
+    assert.equal(await page.locator('.tile-placement:visible').count(),0);
+  });
   await page.close();
 } finally {
   await browser.close();
