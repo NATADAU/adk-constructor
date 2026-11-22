@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Privacy guard: the page may use only its own inline code and local blob:/data: images (neither touches the
+     network). Any request to another server,
+     form submission, frame, font, plugin or <base> change is blocked by the browser. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src blob: data:; connect-src blob:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
 <title>Конструктор карточек АДК</title>
 <style>
 :root {
@@ -155,6 +160,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .popover-card h2 { margin: 0 0 8px; font-size: 18px; color: var(--clp-text); }
 .popover-card p { margin: 0 0 10px; color: var(--clp-muted); font-size: 14px; }
+.popover-card p.popover-warning { color: var(--clp-text); background: #FFF6E0; border: 1px solid var(--clp-orange); border-radius: 10px; padding: 9px 11px; }
 .popover-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0 0 12px; }
 .popover-links a {
   color: var(--clp-teal);
@@ -771,6 +777,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   <div class="popover-card" role="dialog" aria-modal="true" aria-labelledby="bgHelpTitle" id="bgHelpCard">
     <h2 id="bgHelpTitle">Как убрать фон</h2>
     <p>Если у картинки лишний фон, удалите его на одном из сайтов, скачайте PNG и загрузите в конструктор.</p>
+    <p class="popover-warning" role="note"><strong>Обратите внимание:</strong> это сторонние сайты. При загрузке фотографии она может передаваться на их серверы. Не используйте такие сервисы для фотографий детей без соответствующего разрешения.</p>
     <div class="popover-links">
       <a href="https://smartluvon.ai/udalit-fon" target="_blank" rel="noopener noreferrer">Smartluvon</a>
       <a href="https://pixlr.com/remove-background/" target="_blank" rel="noopener noreferrer">Pixlr</a>
@@ -786,7 +793,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   <h2 id="cropTitle">Размер и положение изображения</h2>
   <div id="cropStage" class="crop-stage" tabindex="0" role="group" aria-label="Область кадрирования. Стрелки двигают изображение, плюс и минус меняют масштаб."><img id="cropImage" alt="Изображение для кадрирования"></div>
   <label class="crop-controls">Масштаб <input id="cropZoom" type="range" min="0.3" max="3" step="0.05" value="1"><span id="cropZoomValue">100%</span></label>
-  <label class="tile-label">Подпись на карточке<input id="cropCaption" class="control" type="text" maxlength="80" placeholder="Введите подпись"></label>
+  <label class="tile-label">Подпись на карточке<input id="cropCaption" class="control" type="text" maxlength="80" autocomplete="off" placeholder="Введите подпись"></label>
   <p class="caption-warning" id="cropCaptionWarning" hidden>Подпись не помещается полностью — сократите текст или увеличьте карточку.</p>
   <p style="margin:0;font-size:13px">Уменьшайте изображение до 30% или увеличивайте до 300%. При уменьшении вокруг картинки остаётся свободное место. Исходный файл не изменится.</p>
   <div class="crop-actions"><button type="button" id="cropReset">Сбросить</button><button type="button" id="cropCancel">Отмена</button><button type="button" id="cropApply" class="crop-apply">Применить</button></div>
@@ -1384,6 +1391,7 @@ function tileElement(item) {
   input.className = 'control cap-input';
   input.type = 'text';
   input.maxLength = 80;
+  input.autocomplete = 'off'; // do not let the browser remember typed names
   input.placeholder = 'Необязательно';
   input.value = item.caption;
   label.append(input);
@@ -1513,6 +1521,9 @@ function closeCrop() {
   $('cropImage').onload = null;
   document.body.style.overflow = '';
   cropItem = null;
+  // Do not keep the last photo or typed name in the hidden dialog after it closes.
+  $('cropImage').removeAttribute('src');
+  $('cropCaption').value = '';
   endCropDrag();
   if (cropReturnFocus && cropReturnFocus.isConnected) cropReturnFocus.focus();
   cropReturnFocus = null;
@@ -1671,18 +1682,60 @@ async function normalizeUpload(blob, type) {
     if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
 }
+// Read the declared pixel size from the file header, before the browser decodes anything.
+// A tiny file can declare hundreds of millions of pixels and freeze or crash the tab when decoded.
+// Returns 0 when the size cannot be determined (the file is then handled as before).
+// Measured decode cost is roughly 7-9 bytes per pixel (about 0.6 GB at 64 Mpx, 1.1 GB at 120 Mpx).
+// Phone cameras produce up to about 64 Mpx, so touch devices (phones, tablets) accept up to 70 Mpx;
+// computers keep the wider 120 Mpx limit.
+const MAX_IMAGE_PIXELS = (window.matchMedia && matchMedia('(pointer: coarse)').matches) ? 70e6 : 120e6;
+async function declaredPixels(file, type) {
+  const b = new Uint8Array(await file.slice(0, 1 << 20).arrayBuffer());
+  const u32 = o => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+  if (type === 'image/png') return b.length >= 24 ? u32(16) * u32(20) : 0;
+  if (type === 'image/jpeg') {
+    let i = 2;
+    while (i + 9 < b.length) {
+      if (b[i] !== 0xFF) { i++; continue; }
+      const m = b[i + 1];
+      if (m === 0xFF) { i++; continue; }
+      if (m === 0xD8 || m === 0x01 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
+      if (m === 0xDA || m === 0xD9) return 0;
+      const len = (b[i + 2] << 8) | b[i + 3];
+      if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC)
+        return ((b[i + 7] << 8) | b[i + 8]) * ((b[i + 5] << 8) | b[i + 6]);
+      if (len < 2) return 0;
+      i += 2 + len;
+    }
+    return 0;
+  }
+  if (type === 'image/webp' && b.length >= 30) {
+    const kind = String.fromCharCode(b[12], b[13], b[14], b[15]);
+    if (kind === 'VP8 ') return ((b[26] | (b[27] << 8)) & 0x3FFF) * ((b[28] | (b[29] << 8)) & 0x3FFF);
+    if (kind === 'VP8L') {
+      const bits = (b[21] | (b[22] << 8) | (b[23] << 16) | (b[24] << 24)) >>> 0;
+      return ((bits & 0x3FFF) + 1) * (((bits >>> 14) & 0x3FFF) + 1);
+    }
+    if (kind === 'VP8X') return (1 + (b[24] | (b[25] << 8) | (b[26] << 16))) * (1 + (b[27] | (b[28] << 8) | (b[29] << 16)));
+  }
+  return 0;
+}
 async function addFiles(list) {
   const files = [...list];
   if (!files.length) return;
   let added = 0;
   let rejected = 0;
   let tooBig = 0;
+  let tooManyPixels = 0;
   $('status').textContent = 'Добавляю изображения…';
   for (const file of files) {
     if (file.size > 25 * 1024 * 1024) { tooBig++; continue; }
     let type = '';
     try { type = await sniff(file); } catch (err) { type = ''; }
     if (!type) { rejected++; continue; }
+    let pixels = 0;
+    try { pixels = await declaredPixels(file, type); } catch (err) { pixels = 0; }
+    if (pixels > MAX_IMAGE_PIXELS) { tooManyPixels++; continue; }
     const blob = file.type === type ? file : new Blob([file], { type });
     try {
       const normalized = await normalizeUpload(blob, type);
@@ -1703,6 +1756,7 @@ async function addFiles(list) {
   if (added) parts.push('Добавлено: ' + added + ' шт.');
   if (rejected) parts.push('Пропущено: ' + rejected + ' шт. Проверьте формат PNG, JPG или WEBP и целостность файла.');
   if (tooBig) parts.push('Не добавлены файлы больше 25 МБ: ' + tooBig + ' шт.');
+  if (tooManyPixels) parts.push('Не добавлены изображения со слишком большим разрешением (больше ' + Math.round(MAX_IMAGE_PIXELS / 1e6) + ' млн пикселей): ' + tooManyPixels + ' шт. Уменьшите фото и загрузите снова.');
   $('status').textContent = parts.join(' ') || 'Не удалось добавить файлы.';
   $('files').value = '';
   renderGallery();
@@ -1846,14 +1900,15 @@ function clearExportBitmapCache(url = null) {
 }
 async function decodeExportImage(item) {
   if (exportBitmapCache.has(item.url)) return {image:exportBitmapCache.get(item.url),temporary:false};
-  let image;
+  let image = null;
   if (typeof createImageBitmap === 'function' && item.url.startsWith('blob:')) {
-    const response = await fetch(item.url);
-    if (!response.ok) throw Error('Не удалось открыть изображение.');
-    image = await createImageBitmap(await response.blob());
-  } else {
-    image = await loadExportImage(item.url);
+    // If a browser refuses to read the local blob: address, fall back to the plain <img> loader.
+    try {
+      const response = await fetch(item.url);
+      if (response.ok) image = await createImageBitmap(await response.blob());
+    } catch (_) { image = null; }
   }
+  if (!image) image = await loadExportImage(item.url);
   if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap &&
       exportBitmapCache.size < EXPORT_BITMAP_CACHE_LIMIT) {
     exportBitmapCache.set(item.url, image);
