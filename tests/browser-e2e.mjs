@@ -868,15 +868,25 @@ try {
   });
   await test('Composite card can group, move and scale pictures in one printable square', async () => {
     await page.locator('#createComposite').click();
-    const imageBuffer=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0c8AAAAASUVORK5CYII=','base64');
+    const dataUrl=await page.evaluate(()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=100;canvas.height=100;
+      const ctx=canvas.getContext('2d');
+      ctx.fillStyle='#019BAB';ctx.fillRect(0,0,100,100);
+      return canvas.toDataURL('image/png');
+    });
+    const imageBuffer=Buffer.from(dataUrl.split(',')[1],'base64');
     await page.locator('#compositeFiles').setInputFiles([
       {name:'ball.png',mimeType:'image/png',buffer:imageBuffer},
       {name:'rope.png',mimeType:'image/png',buffer:imageBuffer},
       {name:'hoop.png',mimeType:'image/png',buffer:imageBuffer}
     ]);
+    await page.waitForFunction(()=>document.querySelectorAll('#compositeStage .composite-part').length===3);
     assert.equal(await page.locator('#compositeStage .composite-part').count(),3);
     await page.locator('#compositeCaption').fill('ФИЗКУЛЬТУРА');
-    await page.locator('#compositeScale').fill('1.5');
+    await page.locator('#compositeScale').evaluate(el=>{
+      el.value='1.5';el.dispatchEvent(new Event('input',{bubbles:true}));
+    });
     const first=await page.locator('#compositeStage .composite-part').first().boundingBox();
     await page.mouse.move(first.x+first.width/2,first.y+first.height/2);
     await page.mouse.down();
