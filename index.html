@@ -420,8 +420,9 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   transform-origin: center; pointer-events: none;
 }
  .composite-dialog .crop-box { box-sizing: border-box; width: min(100%, 550px); }
-.composite-editor-stage { position: relative; width: min(100%, 380px); aspect-ratio: 1; background: #fff; border: 2px solid #019BAB; overflow: hidden; touch-action: none; user-select: none; margin: 0 auto; }
+.composite-editor-stage { position: relative; flex: 0 0 auto; width: min(100%, 380px); aspect-ratio: 1; background: #fff; border: 2px solid #019BAB; overflow: hidden; touch-action: none; user-select: none; margin: 0 auto; }
 .composite-editor-stage .composite-part { pointer-events: auto; cursor: grab; }
+.composite-editor-stage.external-drag { outline: 4px dashed #019BAB; outline-offset: 4px; background: #e9f8f8; }
 .composite-editor-stage .composite-part.is-selected { outline: 2px dashed #c22662; outline-offset: 1px; cursor: grab; }
 .composite-editor-stage .composite-part:focus-visible { outline: 3px solid #006d79; }
 .composite-editor-hint { font-size: 13px; color: #345; margin: 0; }
@@ -429,6 +430,12 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .composite-editor-controls button { min-height: 44px; }
 .composite-editor-controls label { flex: 1 1 180px; }
 .composite-editor-controls input[type="range"] { width: 100%; }
+.composite-thumbnails { display: grid; grid-template-columns: repeat(auto-fill,minmax(75px,1fr)); gap: 7px; }
+.composite-thumb { border: 2px solid #bed1d4; border-radius: 9px; background: #fff; color: #244; display: flex; flex-direction: column; gap: 2px; align-items: center; padding: 5px; cursor: pointer; min-height: 74px; min-width: 0; font: inherit; font-size: 12px; }
+.composite-thumb img { width: 52px; height: 44px; object-fit: contain; pointer-events: none; }
+.composite-thumb[aria-pressed="true"] { border-color: #ba2564; background: #fff3f7; }
+.composite-thumb:focus-visible { outline: 3px solid #007886; outline-offset: 1px; }
+.composite-thumb span { white-space: nowrap; }
 @media print { .composite-dialog { display: none !important; } }
 .zoom-seg {
   display: inline-flex;
@@ -830,8 +837,10 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 <div class="crop-dialog composite-dialog" id="compositeDialog" hidden role="dialog" aria-modal="true" aria-labelledby="compositeTitle">
   <div class="crop-box">
     <h2 id="compositeTitle">Составная карточка</h2>
-    <p class="composite-editor-hint">Несколько картинок на одном фоне. Выберите картинку, перетащите её пальцем или мышью, настройте размер. Общая подпись внизу.</p>
+    <p class="composite-editor-hint">Перетащите картинку из другой вкладки прямо в белый квадрат, либо нажмите «Добавить картинки». Изображения с сайтов, запрещающих прямое скачивание, сначала сохраните на устройство. Внутри карточки картинки можно перемещать и увеличивать.</p>
     <div id="compositeStage" class="composite-editor-stage" tabindex="0" aria-label="Расположение картинок внутри карточки"></div>
+    <p class="composite-editor-hint">Все картинки в карточке (выберите любую, даже спрятанную):</p>
+    <div id="compositeThumbnails" class="composite-thumbnails" role="group" aria-label="Список картинок внутри карточки"></div>
     <label class="tile-label">Общая подпись<input id="compositeCaption" class="control" type="text" maxlength="80" autocomplete="off" placeholder="Например, ФИЗКУЛЬТУРА"></label>
     <input type="file" id="compositeFiles" accept="image/png,image/jpeg,image/webp" multiple hidden>
     <div class="composite-editor-controls">
@@ -839,6 +848,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
       <label>Размер выбранной картинки: <output id="compositeScaleText">100%</output>
         <input id="compositeScale" type="range" min="0.4" max="2.5" step=".05" value="1">
       </label>
+      <button id="compositeFront" type="button" class="btn secondary">На передний план</button>
       <button id="compositeRemove" type="button" class="btn secondary">Удалить выбранную</button>
     </div>
     <p class="composite-editor-hint" id="compositeStatus" role="status"></p>
@@ -1604,6 +1614,23 @@ function renderCompositeEditor() {
     img.style.pointerEvents = 'auto';
     stage.append(img);
   });
+  const thumbnails = $('compositeThumbnails');
+  thumbnails.replaceChildren();
+  compositeDraft.parts.forEach((part,index)=>{
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='composite-thumb';
+    button.dataset.index=String(index);
+    button.setAttribute('aria-label','Выбрать картинку ' + (index+1));
+    button.setAttribute('aria-pressed',index===compositeSelected ? 'true' : 'false');
+    const preview=document.createElement('img');
+    preview.alt='';
+    preview.src=part.url;
+    const label=document.createElement('span');
+    label.textContent='Картинка ' + (index+1);
+    button.append(preview,label);
+    thumbnails.append(button);
+  });
   if (!compositeDraft.parts.length) {
     const note=document.createElement('p');
     note.className='empty';
@@ -1613,12 +1640,13 @@ function renderCompositeEditor() {
   const selected=compositeDraft.parts[compositeSelected];
   $('compositeScale').disabled = !selected;
   $('compositeRemove').disabled = !selected;
+  $('compositeFront').disabled = !selected || compositeSelected === compositeDraft.parts.length-1;
   $('compositeSave').disabled = compositeBusy || !compositeDraft.parts.length;
   $('compositeCancel').disabled = compositeBusy;
   $('compositeScale').value = selected ? String(selected.scale) : '1';
   $('compositeScaleText').textContent = selected ? Math.round(selected.scale*100) + '%' : '—';
   $('compositeStatus').textContent = compositeDraft.parts.length +
-    ' изображений в карточке. Выберите картинку для перемещения и изменения размера.';
+    ' изображений в карточке. Нажмите на миниатюру, чтобы выбрать даже скрытую картинку.';
 }
 function closeCompositeEditor(save) {
   if (!compositeDraft || compositeBusy) return;
@@ -1666,17 +1694,48 @@ $('createComposite').addEventListener('click',()=>openCompositeEditor());
 $('compositeCancel').addEventListener('click',()=>closeCompositeEditor(false));
 $('compositeSave').addEventListener('click',()=>closeCompositeEditor(true));
 $('compositeAdd').addEventListener('click',()=>$('compositeFiles').click());
-$('compositeFiles').addEventListener('change',async event=>{
+const compositeStage=$('compositeStage');
+$('compositeThumbnails').addEventListener('click',event=>{
+  const target=event.target.closest('.composite-thumb');
+  if (!target || !compositeDraft) return;
+  compositeSelected=Number(target.dataset.index);
+  renderCompositeEditor();
+  $('compositeThumbnails').querySelector('[data-index="'+compositeSelected+'"]')?.focus();
+});
+$('compositeFront').addEventListener('click',()=>{
+  if (!compositeDraft || compositeSelected<0 || compositeSelected===compositeDraft.parts.length-1) return;
+  const part=compositeDraft.parts.splice(compositeSelected,1)[0];
+  compositeDraft.parts.push(part); // Array order is the drawing order in HTML and PDF.
+  compositeSelected=compositeDraft.parts.length-1;
+  renderCompositeEditor();
+});
+function compositePlacement(parts,requested=null) {
+  // Spread new images across distinct cells. Respect the requested drop point
+  // whenever it does not overlap an existing image too strongly.
+  const candidates=[[17,17],[50,17],[83,17],[17,50],[83,50],[17,83],[50,83],[83,83]];
+  const freeSpace=point=>parts.reduce((closest,part)=>{
+    const dx=point[0]-part.x,dy=point[1]-part.y;
+    return Math.min(closest,Math.hypot(dx,dy));
+  },Infinity);
+  if (requested) {
+    const point=[requested.x,requested.y];
+    if (freeSpace(point)>=30) return point;
+  }
+  return candidates.map((point,index)=>({point,space:freeSpace(point),index}))
+    .sort((a,b)=>b.space-a.space || a.index-b.index)[0].point;
+}
+// Import images as local Blobs so preview, printing and PDF never depend on
+// a third-party URL (which may be blocked by CORS or later removed).
+async function addCompositeBlobs(files, dropPoint = null) {
   if (!compositeDraft || compositeBusy) return;
-  compositeBusy=true;
-  $('compositeAdd').disabled=true;
-  $('compositeCancel').disabled=true;
-  $('compositeSave').disabled=true;
+  compositeBusy = true;
+  $('compositeAdd').disabled = true;
+  $('compositeCancel').disabled = true;
+  $('compositeSave').disabled = true;
+  let rejected=0;
   try {
-    let rejected=0;
-    for (const file of [...event.target.files]) {
-      if (compositeDraft.parts.length >= 8) {rejected++;continue;}
-      if (file.size > 25*1024*1024) {rejected++;continue;}
+    for (const file of [...files]) {
+      if (compositeDraft.parts.length >= 8 || file.size > 25*1024*1024) {rejected++;continue;}
       let type='';
       try {type=await sniff(file);} catch (_) {}
       if (!type) {rejected++;continue;}
@@ -1687,15 +1746,13 @@ $('compositeFiles').addEventListener('change',async event=>{
         const normalized=await normalizeUpload(file.type === type ? file : new Blob([file],{type}),type);
         const url=URL.createObjectURL(normalized.blob);
         compositeAddedUrls.add(url);
-        const n=compositeDraft.parts.length;
-        const positions=[[28,36],[72,36],[50,72],[25,72],[75,72],[50,35],[32,55],[68,55]];
-        const [x,y]=positions[n];
+        const [x,y]=compositePlacement(compositeDraft.parts,dropPoint);
         compositeDraft.parts.push({url,x,y,scale:1});
         compositeSelected=n;
       } catch (_) {rejected++;}
     }
     renderCompositeEditor();
-    if (rejected) $('compositeStatus').textContent += ' Пропущено файлов: ' + rejected + '. Максимум 8 картинок, PNG/JPG/WEBP до 25 МБ.';
+    if (rejected) $('compositeStatus').textContent += ' Пропущено файлов: '+rejected+'. Нужен PNG, JPG или WEBP до 25 МБ, не более 8 картинок.';
   } finally {
     compositeBusy=false;
     $('compositeFiles').value='';
@@ -1703,6 +1760,87 @@ $('compositeFiles').addEventListener('change',async event=>{
     $('compositeCancel').disabled=false;
     $('compositeSave').disabled=!compositeDraft || !compositeDraft.parts.length;
   }
+}
+$('compositeFiles').addEventListener('change',event=>{
+  const files=[...event.target.files];
+  if (files.length) void addCompositeBlobs(files);
+});
+function droppedImageUrl(data) {
+  if (!data) return null;
+  const uri=(data.getData('text/uri-list') || '').split(/\r?\n/).find(line=>line.trim()&&!line.startsWith('#'));
+  let candidate=uri || '';
+  const html=data.getData('text/html');
+  if (html) {
+    const doc=new DOMParser().parseFromString(html,'text/html');
+    const img=doc.querySelector('img[src]');
+    if (img) candidate=img.getAttribute('src') || candidate;
+  }
+  if (!candidate) candidate=(data.getData('text/plain') || '').trim();
+  try {
+    const url=new URL(candidate);
+    if (url.protocol!=='https:' && url.protocol!=='http:') return null;
+    // Browser-managed CORS still applies; never bypass third-party access rules.
+    if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(url.hostname)) return null;
+    return url.href;
+  } catch (_) { return null; }
+}
+async function importCompositeUrl(url,point) {
+  if (!compositeDraft || compositeBusy) return;
+  $('compositeStatus').textContent='Загружаю картинку из браузера…';
+  try {
+    const response=await fetch(url,{mode:'cors',credentials:'omit',redirect:'follow'});
+    if (!response.ok) throw Error('HTTP '+response.status);
+    const size=Number(response.headers.get('content-length'))||0;
+    if (size>25*1024*1024) throw Error('Файл слишком большой');
+    const blob=await response.blob();
+    if (blob.size>25*1024*1024) throw Error('Файл слишком большой');
+    await addCompositeBlobs([blob],point);
+    // If recognition fails, the importer itself shows its rejection notice.
+  } catch (_) {
+    $('compositeStatus').textContent='Этот сайт не разрешает перетащить изображение напрямую. Сохраните картинку на компьютер и добавьте кнопкой «Добавить картинки» или скопируйте само изображение и вставьте Ctrl+V.';
+  }
+}
+function dropPointInComposite(event) {
+  const rect=compositeStage.getBoundingClientRect();
+  return {
+    x:Math.max(0,Math.min(100,(event.clientX-rect.left)/rect.width*100)),
+    y:Math.max(0,Math.min(100,(event.clientY-rect.top)/rect.height*100))
+  };
+}
+compositeStage.addEventListener('dragenter',event=>{
+  if (!compositeDraft) return;
+  event.preventDefault();
+  compositeStage.classList.add('external-drag');
+});
+compositeStage.addEventListener('dragover',event=>{
+  if (!compositeDraft) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect='copy';
+  compositeStage.classList.add('external-drag');
+});
+compositeStage.addEventListener('dragleave',event=>{
+  if (!compositeStage.contains(event.relatedTarget)) compositeStage.classList.remove('external-drag');
+});
+compositeStage.addEventListener('drop',event=>{
+  if (!compositeDraft) return;
+  event.preventDefault();
+  event.stopPropagation(); // Prevent global drop from creating separate cards.
+  compositeStage.classList.remove('external-drag');
+  if (compositeBusy) return;
+  const point=dropPointInComposite(event);
+  const files=[...event.dataTransfer.files].filter(file=>file.size);
+  if (files.length) { void addCompositeBlobs(files,point); return; }
+  const url=droppedImageUrl(event.dataTransfer);
+  if (url) void importCompositeUrl(url,point);
+  else $('compositeStatus').textContent='Не удалось получить картинку. Попробуйте «Копировать изображение» → Ctrl+V, либо сохраните её и добавьте файлом.';
+});
+$('compositeDialog').addEventListener('paste',event=>{
+  if (!compositeDraft || event.target.closest('input,textarea')) return;
+  const files=imageFilesFromClipboard(event.clipboardData);
+  if (!files.length) return;
+  event.preventDefault();
+  event.stopPropagation();
+  void addCompositeBlobs(files);
 });
 $('compositeScale').addEventListener('input',event=>{
   if (!compositeDraft || !compositeDraft.parts[compositeSelected]) return;
@@ -1721,7 +1859,6 @@ $('compositeRemove').addEventListener('click',()=>{
   compositeSelected=Math.min(compositeSelected,compositeDraft.parts.length-1);
   renderCompositeEditor();
 });
-const compositeStage=$('compositeStage');
 let compositeDrag=null;
 compositeStage.addEventListener('pointerdown',event=>{
   const piece=event.target.closest('.composite-part');
@@ -2697,6 +2834,13 @@ document.addEventListener('dragleave', event => {
 document.addEventListener('drop', event => {
   event.preventDefault();
   document.body.classList.remove('drop-active');
+  if (compositeDraft) {
+    // A failed drop in the modal must never add unrelated standalone cards.
+    if (!compositeStage.contains(event.target)) {
+      $('compositeStatus').textContent='Перетащите картинку внутрь белого квадрата.';
+    }
+    return;
+  }
   const files = event.dataTransfer && event.dataTransfer.files;
   if (files && files.length) addFiles(files);
 });
@@ -2708,7 +2852,8 @@ document.addEventListener('paste', event => {
   const files = imageFilesFromClipboard(data);
   if (!files.length) return;
   event.preventDefault();
-  addFiles(files);
+  if (compositeDraft) void addCompositeBlobs(files);
+  else addFiles(files);
 });
 document.querySelector('.mode-chips').addEventListener('click', event => {
   const btn = event.target.closest('[data-mode]');

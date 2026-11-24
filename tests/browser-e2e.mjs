@@ -888,14 +888,14 @@ try {
     await page.waitForFunction(()=>document.querySelectorAll('#compositeStage .composite-part').length===3);
     assert.equal(await page.locator('#compositeStage .composite-part').count(),3);
     await page.locator('#compositeCaption').fill('ФИЗКУЛЬТУРА');
-    await page.locator('#compositeScale').evaluate(el=>{
-      el.value='1.5';el.dispatchEvent(new Event('input',{bubbles:true}));
-    });
     const first=await page.locator('#compositeStage .composite-part').first().boundingBox();
     await page.mouse.move(first.x+first.width/2,first.y+first.height/2);
     await page.mouse.down();
     await page.mouse.move(first.x+first.width/2+15,first.y+first.height/2+10,{steps:4});
     await page.mouse.up();
+    await page.locator('#compositeScale').evaluate(el=>{
+      el.value='1.5';el.dispatchEvent(new Event('input',{bubbles:true}));
+    });
     await page.locator('#compositeSave').click();
     const result=await page.evaluate(async()=>{
       const item=state.items.at(-1);
@@ -912,7 +912,7 @@ try {
       return {parts:item.compositeParts.length,caption:item.caption,oneCard:cards.length===1,
         preview:preview.length,allParts:cards[0]?.querySelectorAll('.composite-part').length,
         modified:item.compositeParts.some(p=>p.scale===1.5),
-        moved:item.compositeParts[0].x>28 && item.compositeParts[0].y>36,
+        moved:item.compositeParts[0].x>17 && item.compositeParts[0].y>17,
         doubledCount,doubledParts,pdf:pdf.type,png:png.type,
         hasCaption:cards[0]?.querySelector('.cap-text')?.textContent};
     });
@@ -921,13 +921,186 @@ try {
     assert.equal(result.oneCard,true);
     assert.equal(result.preview,1);
     assert.equal(result.allParts,3);
-    assert.equal(result.modified,true);
-    assert.equal(result.moved,true);
+    assert.equal(result.modified,true,JSON.stringify(result));
+    assert.equal(result.moved,true,JSON.stringify(result));
     assert.equal(result.doubledCount,2);
     assert.deepEqual(result.doubledParts,[3,3]);
     assert.equal(result.pdf,'application/pdf');
     assert.equal(result.png,'image/png');
     assert.equal(result.hasCaption,'ФИЗКУЛЬТУРА');
+  });
+  await test('Composite editing stage keeps correct aspect on short laptop viewport',async()=>{
+    await page.setViewportSize({width:900,height:830});
+    await page.evaluate(()=>{state.pane='settings';syncPane();state.sizeMode='70';syncSizeButtons();});
+    await page.locator('#createComposite').click();
+    const result=await page.evaluate(()=>{
+      const rect=$('compositeStage').getBoundingClientRect();
+      const plan=layoutPlan();
+      const viewport=cropViewport(plan,true);
+      const expected=viewport.w/viewport.h;
+      return {width:rect.width,height:rect.height,ratio:rect.width/rect.height,
+        expected,modalScroll:$('compositeDialog').querySelector('.crop-box').scrollHeight};
+    });
+    assert.ok(result.height>200,JSON.stringify(result));
+    assert.ok(Math.abs(result.ratio-result.expected)<0.04,JSON.stringify(result));
+    await page.locator('#compositeCancel').click();
+    await page.evaluate(()=>{state.sizeMode='50';syncSizeButtons();});
+    await page.setViewportSize({width:375,height:812});
+  });
+  await test('Thumbnail selection reveals an obscured picture and brings it to the front',async()=>{
+    const itemId=await page.evaluate(()=>state.items.find(item=>item.compositeParts?.length===3)?.id);
+    assert.ok(itemId,'An existing composite card is required');
+    await page.evaluate((id)=>{
+      openCompositeEditor(state.items.find(item=>item.id===id));
+      compositeDraft.parts.forEach(part=>{part.x=50;part.y=50;});
+      compositeSelected=2;renderCompositeEditor();
+    },itemId);
+    const resultBefore=await page.evaluate(()=>({
+      thumbnails:document.querySelectorAll('#compositeThumbnails .composite-thumb').length,
+      overlaid:compositeDraft.parts.every(part=>part.x===50&&part.y===50),
+      selection:compositeSelected
+    }));
+    assert.equal(resultBefore.thumbnails,3);
+    assert.equal(resultBefore.overlaid,true);
+    assert.equal(resultBefore.selection,2);
+    await page.locator('#compositeThumbnails [data-index="0"]').click();
+    assert.equal(await page.locator('#compositeThumbnails [data-index="0"]').getAttribute('aria-pressed'),'true');
+    await page.locator('#compositeFront').click();
+    const result=await page.evaluate(()=>({
+      selected:compositeSelected,
+      selectedTop:compositeSelected===compositeDraft.parts.length-1,
+      isHighlighted:document.querySelector('#compositeStage .composite-part:last-of-type')?.classList.contains('is-selected'),
+      thumbnailCount:document.querySelectorAll('#compositeThumbnails button').length
+    }));
+    assert.equal(result.selectedTop,true,JSON.stringify(result));
+    assert.equal(result.isHighlighted,true,JSON.stringify(result));
+    assert.equal(result.thumbnailCount,3);
+    await page.locator('#compositeCancel').click();
+  });
+  await test('Automatic placement spreads pictures without overlapping at upload',async()=>{
+    const result=await page.evaluate(()=>{
+      const parts=[],coordinates=[];
+      for(let i=0;i<8;i++){
+        const [x,y]=compositePlacement(parts,{x:50,y:50});
+        coordinates.push([x,y]);
+        parts.push({x,y});
+      }
+      let minDistance=Infinity;
+      for(let i=0;i<coordinates.length;i++)
+        for(let j=0;j<i;j++)
+          minDistance=Math.min(minDistance,Math.hypot(coordinates[i][0]-coordinates[j][0],coordinates[i][1]-coordinates[j][1]));
+      return {coordinates,minDistance};
+    });
+    assert.equal(result.coordinates.length,8);
+    assert.equal(new Set(result.coordinates.map(p=>p.join(','))).size,8,JSON.stringify(result));
+    assert.ok(result.minDistance>=32,JSON.stringify(result));
+  });
+  await test('Composite card copies preserve a common cut grid in print and PDF renderer',async()=>{
+    const result=await page.evaluate(()=>{
+      const previous={cutLines:state.cutLines,sizeMode:state.sizeMode,selected: selectedSheetItemId};
+      const item=state.items.find(entry=>entry.compositeParts?.length===3);
+      const oldCopies=item.copies;
+      try {
+        state.cutLines=true;state.sizeMode='50';setItemCopies(item,3);renderOutput();
+        const plan=layoutPlan();
+        const print=document.querySelector('#printRoot');
+        const cards=[...print.querySelectorAll('.sheet-card')].filter(card=>card.querySelector('.composite-parts'));
+        const cutLines=print.querySelectorAll('.cut-grid-line').length;
+        const expected=gridSegments(slots().length,plan).length;
+        const pages=splitPages(plan);
+        let exportGridStrokes=0;
+        const ctx={
+          save(){},restore(){},setLineDash(){},beginPath(){},moveTo(){},lineTo(){},
+          stroke(){exportGridStrokes++},set strokeStyle(v){},set lineWidth(v){}
+        };
+        drawExportCutGrid(ctx,plan,pages[0].length,180);
+        return {cards:cards.length,parts:cards.map(c=>c.querySelectorAll('.composite-part').length),
+          cutLines,expected,exportGridStrokes};
+      } finally {
+        setItemCopies(item,oldCopies);state.cutLines=previous.cutLines;
+        state.sizeMode=previous.sizeMode;selectedSheetItemId=previous.selected;renderOutput();
+      }
+    });
+    assert.equal(result.cards,3,JSON.stringify(result));
+    assert.deepEqual(result.parts,[3,3,3]);
+    assert.equal(result.cutLines,result.expected,JSON.stringify(result));
+    assert.equal(result.exportGridStrokes,1,JSON.stringify(result));
+  });
+  await test('Dropping a real image file into composite editor makes a part, not a separate card',async()=>{
+    await page.locator('#createComposite').click();
+    const result=await page.evaluate(async()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=40;canvas.height=40;
+      canvas.getContext('2d').fillRect(0,0,40,40);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+      const data=new DataTransfer();
+      data.items.add(new File([blob],'ball.png',{type:'image/png'}));
+      const previous=state.items.length;
+      const event=new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data,clientX:280,clientY:330});
+      compositeStage.dispatchEvent(event);
+      for(let n=0;n<100&&compositeDraft.parts.length===0;n++)
+        await new Promise(resolve=>setTimeout(resolve,15));
+      return {parts:compositeDraft.parts.length,items:state.items.length-previous,
+        imageLocal:compositeDraft.parts[0]?.url.startsWith('blob:'),
+        prevented:event.defaultPrevented};
+    });
+    assert.equal(result.parts,1,JSON.stringify(result));
+    assert.equal(result.items,0,JSON.stringify(result));
+    assert.equal(result.imageLocal,true,JSON.stringify(result));
+    assert.equal(result.prevented,true);
+    await page.locator('#compositeCancel').click();
+  });
+  await test('External image URL becomes a local image for offline PDF and PNG',async()=>{
+    await page.locator('#createComposite').click();
+    const result=await page.evaluate(async()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=60;canvas.height=60;
+      canvas.getContext('2d').fillRect(0,0,60,60);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+      const original=window.fetch;
+      window.fetch=async (input,options)=>{
+        if (String(input)==='https://example.com/ball.png') return new Response(blob,{status:200,headers:{'Content-Type':'image/png'}});
+        return original(input,options);
+      };
+      try {
+        const transfer=new DataTransfer();
+        transfer.setData('text/uri-list','https://example.com/ball.png');
+        compositeStage.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer}));
+        for(let n=0;n<100&&!compositeDraft.parts.length;n++)
+          await new Promise(resolve=>setTimeout(resolve,15));
+        const part=compositeDraft.parts[0];
+        return {parts:compositeDraft.parts.length,url:part?.url,external:part?.url?.includes('example.com')};
+      } finally {window.fetch=original;}
+    });
+    assert.equal(result.parts,1,JSON.stringify(result));
+    assert.ok(result.url.startsWith('blob:'),JSON.stringify(result));
+    assert.equal(result.external,false);
+    await page.locator('#compositeCaption').fill('МЯЧ');
+    await page.locator('#compositeSave').click();
+    const exportResult=await page.evaluate(async()=>({
+      pdf:(await buildPdfFile()).type,
+      png:(await buildPngFile()).type
+    }));
+    assert.deepEqual(exportResult,{pdf:'application/pdf',png:'image/png'});
+  });
+  await test('Dragging URL respects browser CORS failure with clear fallback',async()=>{
+    await page.evaluate(()=>{state.pane='settings';syncPane();});
+    await page.locator('#createComposite').click();
+    const result=await page.evaluate(async()=>{
+      const initial=compositeDraft.parts.length;
+      const transfer=new DataTransfer();
+      transfer.setData('text/uri-list','https://unavailable.example.invalid/ball.png');
+      const event=new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer});
+      compositeStage.dispatchEvent(event);
+      for(let n=0;n<100&&!$('compositeStatus').textContent.includes('не разрешает');n++)
+        await new Promise(resolve=>setTimeout(resolve,15));
+      return {parts:compositeDraft.parts.length-initial,
+        message:$('compositeStatus').textContent,prevented:event.defaultPrevented};
+    });
+    assert.equal(result.parts,0,JSON.stringify(result));
+    assert.equal(result.prevented,true);
+    assert.ok(result.message.includes('Сохраните картинку'),JSON.stringify(result));
+    await page.locator('#compositeCancel').click();
   });
   await test('Large 7x7 and 10x10 cm cards use large readable typography',async()=>{
     const result=await page.evaluate(()=>{
