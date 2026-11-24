@@ -953,6 +953,39 @@ try {
     assert.equal(result.prevented,true);
     await page.locator('#compositeCancel').click();
   });
+  await test('External image URL becomes a local image for offline PDF and PNG',async()=>{
+    await page.locator('#createComposite').click();
+    const result=await page.evaluate(async()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=60;canvas.height=60;
+      canvas.getContext('2d').fillRect(0,0,60,60);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+      const original=window.fetch;
+      window.fetch=async (input,options)=>{
+        if (String(input)==='https://example.com/ball.png') return new Response(blob,{status:200,headers:{'Content-Type':'image/png'}});
+        return original(input,options);
+      };
+      try {
+        const transfer=new DataTransfer();
+        transfer.setData('text/uri-list','https://example.com/ball.png');
+        compositeStage.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer}));
+        for(let n=0;n<100&&!compositeDraft.parts.length;n++)
+          await new Promise(resolve=>setTimeout(resolve,15));
+        const part=compositeDraft.parts[0];
+        return {parts:compositeDraft.parts.length,url:part?.url,external:part?.url?.includes('example.com')};
+      } finally {window.fetch=original;}
+    });
+    assert.equal(result.parts,1,JSON.stringify(result));
+    assert.ok(result.url.startsWith('blob:'),JSON.stringify(result));
+    assert.equal(result.external,false);
+    await page.locator('#compositeCaption').fill('МЯЧ');
+    await page.locator('#compositeSave').click();
+    const exportResult=await page.evaluate(async()=>({
+      pdf:(await buildPdfFile()).type,
+      png:(await buildPngFile()).type
+    }));
+    assert.deepEqual(exportResult,{pdf:'application/pdf',png:'image/png'});
+  });
   await test('Dragging URL respects browser CORS failure with clear fallback',async()=>{
     await page.locator('#createComposite').click();
     const result=await page.evaluate(async()=>{
