@@ -591,7 +591,7 @@ try {
         item.caption='Очень длинная подпись которая не должна обрезать третью строку посередине: требуется ограничение в две строки';
         renderOutput();
         const cap=document.querySelector('#printRoot .cap');
-        const css=getComputedStyle(cap);
+        const css=getComputedStyle(cap.querySelector('.cap-text'));
         const plan=layoutPlan(),bw=borderWidth();
         const captured=[];
         const ctx={
@@ -606,7 +606,7 @@ try {
           clamp:css.webkitLineClamp,display:css.display,
           clip:captured[0],
           expectedX:mmToPixels(bw+1.4),
-          expectedY:mmToPixels(plan.card.h-bw-Math.max(6,Math.min(12,plan.card.h*.2))),
+          expectedY:mmToPixels(plan.card.h-bw-captionLayout(plan).height),
           expectedW:mmToPixels(plan.card.w-2*bw-2.8)
         };
       } finally {
