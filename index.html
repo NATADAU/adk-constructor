@@ -1667,6 +1667,7 @@ $('createComposite').addEventListener('click',()=>openCompositeEditor());
 $('compositeCancel').addEventListener('click',()=>closeCompositeEditor(false));
 $('compositeSave').addEventListener('click',()=>closeCompositeEditor(true));
 $('compositeAdd').addEventListener('click',()=>$('compositeFiles').click());
+const compositeStage=$('compositeStage');
 // Import images as local Blobs so preview, printing and PDF never depend on
 // a third-party URL (which may be blocked by CORS or later removed).
 async function addCompositeBlobs(files, dropPoint = null) {
@@ -1804,7 +1805,6 @@ $('compositeRemove').addEventListener('click',()=>{
   compositeSelected=Math.min(compositeSelected,compositeDraft.parts.length-1);
   renderCompositeEditor();
 });
-const compositeStage=$('compositeStage');
 let compositeDrag=null;
 compositeStage.addEventListener('pointerdown',event=>{
   const piece=event.target.closest('.composite-part');
