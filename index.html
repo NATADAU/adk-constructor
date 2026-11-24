@@ -468,6 +468,12 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   z-index: 1;
 }
 .sheet-view .sheet-card.ghost-edge { outline: 1px dashed #B9CDD1; outline-offset: -1px; }
+#preview .sheet-card { cursor: pointer; }
+#preview .sheet-card:focus-visible { outline: 3px solid #005e6d; outline-offset: -3px; }
+#preview .sheet-card:hover { box-shadow: inset 0 0 0 2px #007c8b; }
+@media print { #preview .sheet-card { cursor: auto; } }
+.sheet-edit-hint { margin: 0 0 10px; padding: 8px 10px; font-size: 13px; color: var(--clp-muted); background: #eaf6f7; border-radius: 9px; }
+.sheet-edit-hint[hidden] { display: none; }
 .cut-grid { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
 .cut-grid-line { position: absolute; box-sizing: border-box; pointer-events: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 .cut-grid-line.horizontal { height: 0; border-top: .25mm dashed #555; }
@@ -748,6 +754,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
         </div>
         <p class="sheet-quantity-status" id="sheetQuantityStatus" role="status" aria-live="polite"></p>
       </div>
+      <p class="sheet-edit-hint" id="sheetEditHint" hidden>Нажмите на нужную карточку на листе, чтобы изменить только её размер, положение или подпись.</p>
       <div class="preview-toolbar">
         <div class="print-actions">
           <button type="button" class="btn secondary" id="savePdf" disabled>Скачать PDF</button>
@@ -891,6 +898,8 @@ function layoutPlan() {
   if (!base.perSheet) base.error = 'Не удалось разложить элементы на листе. Измените размер или поля.';
   return base;
 }
+// Each printed copy is a lightweight view of one uploaded image. Only edited
+// copies have overrides; the binary image and object URL are never duplicated.
 function slots() {
   const list = [];
   const items = state.mode === 'matching'
@@ -899,7 +908,11 @@ function slots() {
   items.forEach(item => {
     if (state.mode === 'matching' && item.side !== 'left' && item.side !== 'right') return;
     const n = state.mode === 'matching' ? 1 : normalizeCopies(item.copies);
-    for (let i = 0; i < n; i++) list.push(item);
+    for (let i = 0; i < n; i++) {
+      if (state.mode === 'matching') { list.push(item); continue; }
+      const override = item.copyOverrides && item.copyOverrides[i];
+      list.push({...item, ...(override || {}), _sourceId:item.id, _copyIndex:i});
+    }
   });
   return list;
 }
@@ -938,7 +951,9 @@ function captionShown(item) {
   return state.showLabels && !!item.caption.trim();
 }
 function structureKey(plan) {
-  const ids = state.items.map(item => item.id + 'x' + normalizeCopies(item.copies) + (item.crop ? ':crop' + [item.crop.zoom, item.crop.x, item.crop.y].join(',') : '')).join(',');
+  const ids = state.items.map(item => item.id + 'x' + normalizeCopies(item.copies) +
+    (item.crop ? ':crop' + [item.crop.zoom, item.crop.x, item.crop.y].join(',') : '') +
+    ':copies' + JSON.stringify(item.copyOverrides || {})).join(',');
   const caps = state.items.map(item => captionShown(item) ? '1' : '0').join('');
   return [
     state.mode, plan.page.w, plan.page.h, plan.card.w, plan.card.h, plan.margin, plan.gap,
@@ -1032,6 +1047,14 @@ function buildCard(item, plan, x, y) {
   card.style.top = y + 'mm';
   card.style.width = plan.card.w + 'mm';
   card.style.height = plan.card.h + 'mm';
+  if (item._sourceId && state.mode !== 'matching') {
+    card.dataset.sourceId = item._sourceId;
+    card.dataset.copyIndex = String(item._copyIndex);
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', 'Изменить карточку ' + (item.caption.trim() || 'без подписи') +
+      ', экземпляр ' + (item._copyIndex + 1));
+  }
   const width = borderWidth();
   if (width > 0) card.style.border = width + 'mm solid ' + safeColor(state.borderColor);
   else if (!state.cutLines) card.classList.add('ghost-edge');
@@ -1187,6 +1210,7 @@ function renderOutput() {
   $('pageCss').textContent = '@page{size:' + plan.page.w + 'mm ' + plan.page.h + 'mm;margin:0;}';
   $('sizeNow').textContent = 'На бумаге: ' + cmLabel(plan.card.w) + ' × ' + cmLabel(plan.card.h) + ' см';
   $('sheetQuantity').hidden = state.mode === 'matching';
+  $('sheetEditHint').hidden = state.mode === 'matching' || !state.items.length;
   document.querySelectorAll('#gallery .tile-placement').forEach(el=>{el.hidden=state.mode!=='matching';});
   if (key === lastKey && !plan.error && !captionsNeedRebuild()) {
     syncCaptionText();
@@ -1304,10 +1328,18 @@ function syncSheetQuantity() {
   $('sheetDec').disabled = active.copies <= 1;
   $('sheetInc').disabled = active.copies >= 30;
 }
+function setItemCopies(item, count) {
+  item.copies = normalizeCopies(count);
+  if (item.copyOverrides) {
+    for (const key of Object.keys(item.copyOverrides)) {
+      if (Number(key) >= item.copies) delete item.copyOverrides[key];
+    }
+  }
+}
 function updateSheetCopies(value) {
   const item = selectedSheetItem();
   if (!item) return;
-  item.copies = normalizeCopies(value);
+  setItemCopies(item, value);
   $('sheetCopyInput').value = String(item.copies);
   renderOutput();
 }
@@ -1326,7 +1358,7 @@ $('sheetCopyInput').addEventListener('input', event => {
   if (!/^\d+$/.test(value)) return;
   const item = selectedSheetItem();
   if (!item) return;
-  item.copies = normalizeCopies(value);
+  setItemCopies(item, value);
   renderOutput();
 });
 $('sheetCopyInput').addEventListener('blur', () => {
@@ -1430,6 +1462,7 @@ function tileElement(item) {
 }
 let cropItem = null;
 let cropDraft = { zoom: 1, x: 0, y: 0 };
+let editingCopy = null;
 function cropViewport(plan, captionVisible) {
   const innerInset = 2 * borderWidth() + 2.4;
   const capHeight = captionVisible ? Math.max(6, Math.min(12, plan.card.h * .2)) : 0;
@@ -1502,8 +1535,16 @@ function drawCrop() {
   $('cropZoomValue').textContent = Math.round(cropDraft.zoom * 100) + '%';
 }
 let cropReturnFocus = null;
-function openCrop(item) {
+function openCrop(item, copyIndex = null) {
   cropReturnFocus = document.activeElement;
+  editingCopy = copyIndex === null ? null : {sourceId:item.id, copyIndex};
+  if (editingCopy) {
+    const override = item.copyOverrides && item.copyOverrides[copyIndex];
+    item = {...item, ...(override || {})};
+  }
+  $('cropTitle').textContent = editingCopy
+    ? 'Карточка ' + (editingCopy.copyIndex + 1) + ': размер и положение'
+    : 'Размер и положение изображения';
   cropItem = item;
   cropDraft = { ...(item.crop || { zoom: 1, x: 0, y: 0 }) };
   $('cropCaption').value = item.caption;
@@ -1521,6 +1562,7 @@ function closeCrop() {
   $('cropImage').onload = null;
   document.body.style.overflow = '';
   cropItem = null;
+  editingCopy = null;
   // Do not keep the last photo or typed name in the hidden dialog after it closes.
   $('cropImage').removeAttribute('src');
   $('cropCaption').value = '';
@@ -1533,9 +1575,21 @@ $('cropDialog').addEventListener('click', e => { if (e.target === $('cropDialog'
 $('cropReset').addEventListener('click', () => { cropDraft = { zoom: 1, x: 0, y: 0 }; drawCrop(); });
 $('cropApply').addEventListener('click', () => {
   if (cropItem) {
-    cropItem.crop = { ...cropDraft };
-    cropItem.caption = $('cropCaption').value;
-    if (cropItem.caption.trim() && !state.showLabels) { state.showLabels = true; $('showLabels').checked = true; }
+    if (editingCopy) {
+      const source = findItem(editingCopy.sourceId);
+      if (source) {
+        if (!source.copyOverrides) source.copyOverrides = {};
+        source.copyOverrides[editingCopy.copyIndex] = {
+          crop:{...cropDraft}, caption:$('cropCaption').value
+        };
+      }
+    } else {
+      cropItem.crop = {...cropDraft};
+      cropItem.caption = $('cropCaption').value;
+    }
+    if ($('cropCaption').value.trim() && !state.showLabels) {
+      state.showLabels = true; $('showLabels').checked = true;
+    }
   }
   closeCrop();
   renderGallery();
@@ -2403,6 +2457,27 @@ bindSelect('paper', 'paper', false);
 bindSelect('orient', 'orient', false);
 bindSelect('margin', 'margin', true);
 bindSelect('gap', 'gap', true);
+// Tapping an individual preview card edits that copy, not every card made
+// from the same uploaded image. Keyboard users can press Enter or Space.
+function editPreviewCard(target) {
+  if (state.mode === 'matching') return;
+  const card = target.closest('#preview .sheet-card[data-source-id]');
+  if (!card) return;
+  const source = findItem(card.dataset.sourceId);
+  const index = Number(card.dataset.copyIndex);
+  if (!source || !Number.isInteger(index) || index < 0 || index >= normalizeCopies(source.copies)) return;
+  selectedSheetItemId = source.id;
+  syncSheetQuantity();
+  openCrop(source,index);
+}
+$('preview').addEventListener('click', event => editPreviewCard(event.target));
+$('preview').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const card = event.target.closest('.sheet-card[data-source-id]');
+  if (!card || card !== event.target) return;
+  event.preventDefault();
+  editPreviewCard(card);
+});
 $('gallery').addEventListener('click', event => {
   const tile = event.target.closest('[data-id]');
   if (!tile) return;
