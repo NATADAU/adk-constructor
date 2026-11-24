@@ -929,6 +929,48 @@ try {
     assert.equal(result.png,'image/png');
     assert.equal(result.hasCaption,'ФИЗКУЛЬТУРА');
   });
+  await test('Dropping a real image file into composite editor makes a part, not a separate card',async()=>{
+    await page.locator('#createComposite').click();
+    const result=await page.evaluate(async()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=40;canvas.height=40;
+      canvas.getContext('2d').fillRect(0,0,40,40);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+      const data=new DataTransfer();
+      data.items.add(new File([blob],'ball.png',{type:'image/png'}));
+      const previous=state.items.length;
+      const event=new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data,clientX:280,clientY:330});
+      compositeStage.dispatchEvent(event);
+      for(let n=0;n<100&&compositeDraft.parts.length===0;n++)
+        await new Promise(resolve=>setTimeout(resolve,15));
+      return {parts:compositeDraft.parts.length,items:state.items.length-previous,
+        imageLocal:compositeDraft.parts[0]?.url.startsWith('blob:'),
+        prevented:event.defaultPrevented};
+    });
+    assert.equal(result.parts,1,JSON.stringify(result));
+    assert.equal(result.items,0,JSON.stringify(result));
+    assert.equal(result.imageLocal,true,JSON.stringify(result));
+    assert.equal(result.prevented,true);
+    await page.locator('#compositeCancel').click();
+  });
+  await test('Dragging URL respects browser CORS failure with clear fallback',async()=>{
+    await page.locator('#createComposite').click();
+    const result=await page.evaluate(async()=>{
+      const initial=compositeDraft.parts.length;
+      const transfer=new DataTransfer();
+      transfer.setData('text/uri-list','https://unavailable.example.invalid/ball.png');
+      const event=new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer});
+      compositeStage.dispatchEvent(event);
+      for(let n=0;n<100&&!$('compositeStatus').textContent.includes('не разрешает');n++)
+        await new Promise(resolve=>setTimeout(resolve,15));
+      return {parts:compositeDraft.parts.length-initial,
+        message:$('compositeStatus').textContent,prevented:event.defaultPrevented};
+    });
+    assert.equal(result.parts,0,JSON.stringify(result));
+    assert.equal(result.prevented,true);
+    assert.ok(result.message.includes('Сохраните картинку'),JSON.stringify(result));
+    await page.locator('#compositeCancel').click();
+  });
   await test('Large 7x7 and 10x10 cm cards use large readable typography',async()=>{
     const result=await page.evaluate(()=>{
       const previous=state.sizeMode,values=[];
