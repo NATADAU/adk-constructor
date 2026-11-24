@@ -929,6 +929,24 @@ try {
     assert.equal(result.png,'image/png');
     assert.equal(result.hasCaption,'ФИЗКУЛЬТУРА');
   });
+  await test('Composite editing stage keeps correct aspect on short laptop viewport',async()=>{
+    await page.setViewportSize({width:900,height:830});
+    await page.evaluate(()=>{state.sizeMode='70';syncSizeButtons();});
+    await page.locator('#createComposite').click();
+    const result=await page.evaluate(()=>{
+      const rect=$('compositeStage').getBoundingClientRect();
+      const plan=layoutPlan();
+      const viewport=cropViewport(plan,true);
+      const expected=viewport.w/viewport.h;
+      return {width:rect.width,height:rect.height,ratio:rect.width/rect.height,
+        expected,modalScroll:$('compositeDialog').querySelector('.crop-box').scrollHeight};
+    });
+    assert.ok(result.height>200,JSON.stringify(result));
+    assert.ok(Math.abs(result.ratio-result.expected)<0.04,JSON.stringify(result));
+    await page.locator('#compositeCancel').click();
+    await page.evaluate(()=>{state.sizeMode='50';syncSizeButtons();});
+    await page.setViewportSize({width:375,height:812});
+  });
   await test('Thumbnail selection reveals an obscured picture and brings it to the front',async()=>{
     const itemId=await page.evaluate(()=>state.items.find(item=>item.compositeParts?.length===3)?.id);
     assert.ok(itemId,'An existing composite card is required');
