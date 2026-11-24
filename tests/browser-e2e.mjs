@@ -781,6 +781,46 @@ try {
     assert.equal(await page.locator('#printRoot .sheet-card').count(),2);
     assert.equal(await page.locator('.tile-placement:visible').count(),0);
   });
+  await test('A source caption appears immediately on a formerly blank card and after duplication', async () => {
+    const result=await page.evaluate(()=>{
+      state.mode='cards';
+      state.showLabels=true;
+      const source=state.items[0];
+      source.caption='';
+      source.copies=1;
+      // Reproduce a pre-existing copy with a stale inherited empty caption.
+      source.copyOverrides={0:{caption:'',crop:{zoom:1.1,x:0,y:0}}};
+      state.items=[source];
+      renderGallery();renderOutput();
+      openCrop(source);
+      document.querySelector('#cropCaption').value='ЯБЛОКО';
+      document.querySelector('#cropApply').click();
+      const first=[...document.querySelectorAll('#printRoot .sheet-card')].map(card=>card.querySelector('.cap')?.textContent||'');
+      updateSheetCopies(3);
+      const after=[...document.querySelectorAll('#printRoot .sheet-card')].map(card=>card.querySelector('.cap')?.textContent||'');
+      return {first,after,source:source.caption,overrides:source.copyOverrides};
+    });
+    assert.deepEqual(result.first,['ЯБЛОКО']);
+    assert.deepEqual(result.after,['ЯБЛОКО','ЯБЛОКО','ЯБЛОКО']);
+    assert.equal(result.source,'ЯБЛОКО');
+    assert.equal(result.overrides[0].caption,undefined);
+  });
+  await test('Changing the original caption keeps a deliberately different copy caption', async () => {
+    const result=await page.evaluate(()=>{
+      const source=state.items[0];
+      openCrop(source,1);
+      document.querySelector('#cropCaption').value='ДРУГАЯ ПОДПИСЬ';
+      document.querySelector('#cropApply').click();
+      openCrop(source);
+      document.querySelector('#cropCaption').value='КРАСНОЕ ЯБЛОКО';
+      document.querySelector('#cropApply').click();
+      const printed=[...document.querySelectorAll('#printRoot .sheet-card')].map(card=>card.querySelector('.cap')?.textContent||'');
+      const preview=[...document.querySelectorAll('#preview .sheet-card')].map(card=>card.querySelector('.cap')?.textContent||'');
+      return {printed,preview};
+    });
+    assert.deepEqual(result.printed,['КРАСНОЕ ЯБЛОКО','ДРУГАЯ ПОДПИСЬ','КРАСНОЕ ЯБЛОКО']);
+    assert.deepEqual(result.preview,result.printed);
+  });
   await page.close();
 } finally {
   await browser.close();
