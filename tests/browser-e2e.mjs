@@ -821,6 +821,51 @@ try {
     assert.deepEqual(result.printed,['КРАСНОЕ ЯБЛОКО','ДРУГАЯ ПОДПИСЬ','КРАСНОЕ ЯБЛОКО']);
     assert.deepEqual(result.preview,result.printed);
   });
+  await test('Card captions scale with 3x3, 5x5 and 10x10 sizes and sit near the lower edge', async () => {
+    const result=await page.evaluate(()=>{
+      const previous={items:state.items,mode:state.mode,sizeMode:state.sizeMode,
+        showLabels:state.showLabels};
+      const sample={...state.items[0],id:'caption-type-test',caption:'ЯБЛОКО',copies:1,copyOverrides:{}};
+      const cases=[];
+      try {
+        state.items=[sample];state.mode='cards';state.showLabels=true;
+        for(const size of ['30','50','100']){
+          state.sizeMode=size;
+          renderOutput();
+          const card=document.querySelector('#preview .sheet-card');
+          const cap=card.querySelector('.cap');
+          const text=cap.querySelector('.cap-text');
+          const cardRect=card.getBoundingClientRect();
+          const textRect=text.getBoundingClientRect();
+          cases.push({size,fontPx:parseFloat(getComputedStyle(cap).fontSize),
+            text:text.textContent,lowerGapPx:cardRect.bottom-textRect.bottom,
+            capHeight:captionLayout(layoutPlan()).height});
+        }
+      } finally {Object.assign(state,previous);renderOutput();}
+      return cases;
+    });
+    assert.deepEqual(result.map(x=>x.text),['ЯБЛОКО','ЯБЛОКО','ЯБЛОКО']);
+    assert.ok(result[0].fontPx>=12,JSON.stringify(result));
+    assert.ok(result[1].fontPx>result[0].fontPx,JSON.stringify(result));
+    assert.ok(result[2].fontPx>result[1].fontPx,JSON.stringify(result));
+    assert.ok(result.every(x=>x.lowerGapPx>=0 && x.lowerGapPx<8),JSON.stringify(result));
+  });
+  await test('Caption text retains its bottom-aligned span after an in-place refresh', async () => {
+    const result=await page.evaluate(()=>{
+      const previous={items:state.items,mode:state.mode,sizeMode:state.sizeMode,showLabels:state.showLabels};
+      try {
+        state.items=[{...state.items[0],id:'caption-refresh-test',caption:'ЯБЛОКО',copies:1,copyOverrides:{}}];
+        state.mode='cards';state.sizeMode='50';state.showLabels=true;
+        renderOutput();
+        state.items[0].caption='ГРУША';
+        renderOutput();
+        return {preview:document.querySelector('#preview .cap-text')?.textContent,
+          print:document.querySelector('#printRoot .cap-text')?.textContent,
+          spans:document.querySelectorAll('#preview .cap .cap-text').length};
+      } finally {Object.assign(state,previous);renderOutput();}
+    });
+    assert.deepEqual(result,{preview:'ГРУША',print:'ГРУША',spans:1});
+  });
   await page.close();
 } finally {
   await browser.close();
