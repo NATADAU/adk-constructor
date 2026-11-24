@@ -939,6 +939,23 @@ function layoutPlan() {
 }
 // Each printed copy is a lightweight view of one uploaded image. Only edited
 // copies have overrides; the binary image and object URL are never duplicated.
+function compositePartStyle(part) {
+  return 'left:' + part.x + '%;top:' + part.y + '%;transform:translate(-50%,-50%) scale(' + part.scale + ')';
+}
+function makeCompositeParts(parts) {
+  const layer = document.createElement('div');
+  layer.className = 'composite-parts';
+  for (const part of parts) {
+    const image = document.createElement('img');
+    image.className = 'composite-part';
+    image.alt = '';
+    image.draggable = false;
+    image.src = part.url;
+    image.style.cssText = compositePartStyle(part);
+    layer.append(image);
+  }
+  return layer;
+}
 function slots() {
   const list = [];
   const items = state.mode === 'matching'
@@ -1015,7 +1032,8 @@ function updateSourceCaption(item, text) {
 function structureKey(plan) {
   const ids = state.items.map(item => item.id + 'x' + normalizeCopies(item.copies) +
     (item.crop ? ':crop' + [item.crop.zoom, item.crop.x, item.crop.y].join(',') : '') +
-    ':copies' + JSON.stringify(item.copyOverrides || {})).join(',');
+    ':copies' + JSON.stringify(item.copyOverrides || {}) +
+    ':parts' + JSON.stringify(item.compositeParts || [])).join(',');
   // Caption text is part of the rendered card and accessibility label.
   // Include its value, not just whether a caption exists, in the render key.
   const caps = state.items.map(item => item.caption).join('\u0001');
@@ -1124,12 +1142,16 @@ function buildCard(item, plan, x, y) {
   else if (!state.cutLines) card.classList.add('ghost-edge');
   const pic = document.createElement('div');
   pic.className = 'pic';
-  const img = document.createElement('img');
-  img.alt = item.caption.trim() || 'Изображение без подписи';
-  img.src = item.url;
-  pic.append(img);
-  const effectiveCrop = boundedItemCrop(item, plan);
-  if (effectiveCrop) { img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')'; }
+  if (item.compositeParts) {
+    pic.append(makeCompositeParts(item.compositeParts));
+  } else {
+    const img = document.createElement('img');
+    img.alt = item.caption.trim() || 'Изображение без подписи';
+    img.src = item.url;
+    pic.append(img);
+    const effectiveCrop = boundedItemCrop(item, plan);
+    if (effectiveCrop) { img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')'; }
+  }
   card.append(pic);
   if (captionShown(item)) {
     const text = item.caption.trim();
@@ -1452,7 +1474,7 @@ function renderGallery() {
 function syncGalleryCropPreviews(plan) {
   document.querySelectorAll('#gallery .tile').forEach(tile => {
     const item = findItem(tile.dataset.id);
-    if (!item) return;
+    if (!item || item.compositeParts) return;
     const viewport = cropViewport(plan,captionShown(item));
     const frame = tile.querySelector('.tile-crop-viewport');
     const img = frame && frame.querySelector('img');
@@ -1477,13 +1499,17 @@ function tileElement(item) {
   const cropPreview = document.createElement('div');
   cropPreview.className = 'tile-crop-viewport';
   cropPreview.style.setProperty('--crop-ratio', String(viewport.w / viewport.h));
-  const img = document.createElement('img');
-  img.alt = '';
-  img.draggable = false;
-  img.src = item.url;
-  const effectiveCrop = boundedItemCrop(item, plan);
-  if (effectiveCrop) img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')';
-  cropPreview.append(img);
+  if (item.compositeParts) {
+    cropPreview.append(makeCompositeParts(item.compositeParts));
+  } else {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    img.src = item.url;
+    const effectiveCrop = boundedItemCrop(item, plan);
+    if (effectiveCrop) img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')';
+    cropPreview.append(img);
+  }
   frame.append(cropPreview);
   const label = document.createElement('label');
   label.className = 'tile-label';
@@ -1518,8 +1544,8 @@ function tileElement(item) {
   const cropBtn = document.createElement('button');
   cropBtn.type = 'button';
   cropBtn.className = 'crop-btn';
-  cropBtn.textContent = 'Размер и кадр';
-  cropBtn.setAttribute('aria-label','Изменить размер и кадр изображения');
+  cropBtn.textContent = item.compositeParts ? 'Редактировать композицию' : 'Размер и кадр';
+  cropBtn.setAttribute('aria-label',item.compositeParts ? 'Редактировать составную карточку' : 'Изменить размер и кадр изображения');
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'remove';
@@ -1892,7 +1918,8 @@ async function addFiles(list) {
   }
 }
 function resetAll() {
-  state.items.forEach(item => URL.revokeObjectURL(item.url));
+  state.items.forEach(item => (item.compositeParts ? item.compositeParts.map(p => p.url) : [item.url])
+    .forEach(url => URL.revokeObjectURL(url)));
   clearExportBitmapCache();
   state.items = [];
   selectedSheetItemId = null;
@@ -2539,6 +2566,7 @@ function editPreviewCard(target) {
   const source = findItem(card.dataset.sourceId);
   const index = Number(card.dataset.copyIndex);
   if (!source || !Number.isInteger(index) || index < 0 || index >= normalizeCopies(source.copies)) return;
+  if (source.compositeParts) { openCompositeEditor(source); return; }
   selectedSheetItemId = source.id;
   syncSheetQuantity();
   openCrop(source,index);
@@ -2557,15 +2585,21 @@ $('gallery').addEventListener('click', event => {
   const item = findItem(tile.dataset.id);
   if (!item) return;
   if (event.target.closest('.remove')) {
-    URL.revokeObjectURL(item.url);
-    clearExportBitmapCache(item.url);
+    for (const url of item.compositeParts ? item.compositeParts.map(part => part.url) : [item.url]) {
+      URL.revokeObjectURL(url);
+      clearExportBitmapCache(url);
+    }
     state.items = state.items.filter(entry => entry !== item);
     $('status').textContent = 'Изображение убрано из набора.';
     renderGallery();
     renderOutput();
     return;
   }
-  if (event.target.closest('.crop-btn')) { openCrop(item); return; }
+  if (event.target.closest('.crop-btn')) {
+    if (item.compositeParts) openCompositeEditor(item);
+    else openCrop(item);
+    return;
+  }
 
 });
 $('gallery').addEventListener('input', event => {
