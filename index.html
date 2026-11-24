@@ -414,7 +414,6 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .tile-actions button { flex: 1 1 140px; min-height: 44px; border: 1px solid var(--clp-line-strong); background: white; border-radius: 10px; padding: 8px 10px; font-size: 14px; font-weight: 600; }
 .tile-actions .crop-btn { color: var(--clp-teal-dark); }
 .tile-actions .remove { color: #ac2454; }
-.composite-create { min-height: 44px; border: 1px solid var(--clp-teal); color: var(--clp-teal-dark); background: #fff; border-radius: 9px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
 .composite-parts { position: absolute; inset: 0; background: white; overflow: hidden; }
 .composite-part, .pic .composite-part, .tile-crop-viewport .composite-part {
   position: absolute; display: block; inset: auto; width: 32%; height: 32%; object-fit: contain;
@@ -677,6 +676,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
             <button type="button" class="chip" data-mode="pictures">Картинки</button>
             <button type="button" class="chip active" data-mode="cards" aria-pressed="true">Карточки</button>
             <button type="button" class="chip" data-mode="matching" aria-pressed="false">Соедини линиями</button>
+            <button type="button" class="chip" id="createComposite" aria-haspopup="dialog" aria-controls="compositeDialog">Составная карточка</button>
           </div>
         </div>
         <p id="matchingHelp" class="size-now" hidden>Назначьте каждой картинке сторону: слева или справа. Середина листа останется пустой, чтобы провести линии. Для удобства попробуйте альбомный лист.</p>
@@ -755,7 +755,6 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
           <h2>Изображения</h2>
           <span id="countLabel" class="pill">0</span>
         </div>
-        <button type="button" class="composite-create" id="createComposite">+ Составная карточка</button>
         <div id="gallery" class="gallery"></div>
       </section>
     </div>
@@ -1626,6 +1625,7 @@ function closeCompositeEditor(save) {
   const draft = compositeDraft;
   if (save) {
     if (!draft.parts.length) return;
+    if (state.mode !== 'cards') applyModeDefaults('cards');
     if (draft.source) {
       const previous = new Set(draft.source.compositeParts.map(p=>p.url));
       const remaining = new Set(draft.parts.map(p=>p.url));
