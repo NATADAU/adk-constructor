@@ -1201,7 +1201,8 @@ function syncCaptionText() {
   ['preview', 'printRoot'].forEach(id => {
     $(id).querySelectorAll('.sheet-card').forEach((card, index) => {
       const cap = card.querySelector('.cap');
-      if (cap && all[index]) cap.textContent = all[index].caption.trim();
+      const textNode = cap && cap.querySelector('.cap-text');
+      if (textNode && all[index]) textNode.textContent = all[index].caption.trim();
     });
   });
 }
