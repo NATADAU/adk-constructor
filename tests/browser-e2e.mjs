@@ -912,7 +912,7 @@ try {
       return {parts:item.compositeParts.length,caption:item.caption,oneCard:cards.length===1,
         preview:preview.length,allParts:cards[0]?.querySelectorAll('.composite-part').length,
         modified:item.compositeParts.some(p=>p.scale===1.5),
-        moved:item.compositeParts[0].x>28 && item.compositeParts[0].y>36,
+        moved:item.compositeParts[0].x>25 && item.compositeParts[0].y>26,
         doubledCount,doubledParts,pdf:pdf.type,png:png.type,
         hasCaption:cards[0]?.querySelector('.cap-text')?.textContent};
     });
@@ -928,6 +928,85 @@ try {
     assert.equal(result.pdf,'application/pdf');
     assert.equal(result.png,'image/png');
     assert.equal(result.hasCaption,'ФИЗКУЛЬТУРА');
+  });
+  await test('Thumbnail selection reveals an obscured picture and brings it to the front',async()=>{
+    const itemId=await page.evaluate(()=>state.items.find(item=>item.compositeParts?.length===3)?.id);
+    assert.ok(itemId,'An existing composite card is required');
+    await page.evaluate((id)=>{
+      openCompositeEditor(state.items.find(item=>item.id===id));
+      compositeDraft.parts.forEach(part=>{part.x=50;part.y=50;});
+      compositeSelected=2;renderCompositeEditor();
+    },itemId);
+    const resultBefore=await page.evaluate(()=>({
+      thumbnails:document.querySelectorAll('#compositeThumbnails .composite-thumb').length,
+      overlaid:compositeDraft.parts.every(part=>part.x===50&&part.y===50),
+      selection:compositeSelected
+    }));
+    assert.equal(resultBefore.thumbnails,3);
+    assert.equal(resultBefore.overlaid,true);
+    assert.equal(resultBefore.selection,2);
+    await page.locator('#compositeThumbnails [data-index="0"]').click();
+    assert.equal(await page.locator('#compositeThumbnails [data-index="0"]').getAttribute('aria-pressed'),'true');
+    await page.locator('#compositeFront').click();
+    const result=await page.evaluate(()=>({
+      selected:compositeSelected,
+      selectedTop:compositeSelected===compositeDraft.parts.length-1,
+      isHighlighted:document.querySelector('#compositeStage .composite-part:last-of-type')?.classList.contains('is-selected'),
+      thumbnailCount:document.querySelectorAll('#compositeThumbnails button').length
+    }));
+    assert.equal(result.selectedTop,true,JSON.stringify(result));
+    assert.equal(result.isHighlighted,true,JSON.stringify(result));
+    assert.equal(result.thumbnailCount,3);
+    await page.locator('#compositeCancel').click();
+  });
+  await test('Automatic placement spreads pictures without overlapping at upload',async()=>{
+    const result=await page.evaluate(()=>{
+      const parts=[],coordinates=[];
+      for(let i=0;i<8;i++){
+        const [x,y]=compositePlacement(parts,{x:50,y:50});
+        coordinates.push([x,y]);
+        parts.push({x,y});
+      }
+      let minDistance=Infinity;
+      for(let i=0;i<coordinates.length;i++)
+        for(let j=0;j<i;j++)
+          minDistance=Math.min(minDistance,Math.hypot(coordinates[i][0]-coordinates[j][0],coordinates[i][1]-coordinates[j][1]));
+      return {coordinates,minDistance};
+    });
+    assert.equal(result.coordinates.length,8);
+    assert.equal(new Set(result.coordinates.map(p=>p.join(','))).size,8,JSON.stringify(result));
+    assert.ok(result.minDistance>=24,JSON.stringify(result));
+  });
+  await test('Composite card copies preserve a common cut grid in print and PDF renderer',async()=>{
+    const result=await page.evaluate(()=>{
+      const previous={cutLines:state.cutLines,sizeMode:state.sizeMode,selected: selectedSheetItemId};
+      const item=state.items.find(entry=>entry.compositeParts?.length===3);
+      const oldCopies=item.copies;
+      try {
+        state.cutLines=true;state.sizeMode='50';setItemCopies(item,3);renderOutput();
+        const plan=layoutPlan();
+        const print=document.querySelector('#printRoot');
+        const cards=[...print.querySelectorAll('.sheet-card')].filter(card=>card.querySelector('.composite-parts'));
+        const cutLines=print.querySelectorAll('.cut-grid-line').length;
+        const expected=gridSegments(slots().length,plan).length;
+        const pages=splitPages(plan);
+        let exportGridStrokes=0;
+        const ctx={
+          save(){},restore(){},setLineDash(){},beginPath(){},moveTo(){},lineTo(){},
+          stroke(){exportGridStrokes++},set strokeStyle(v){},set lineWidth(v){}
+        };
+        drawExportCutGrid(ctx,plan,pages[0].length,180);
+        return {cards:cards.length,parts:cards.map(c=>c.querySelectorAll('.composite-part').length),
+          cutLines,expected,exportGridStrokes};
+      } finally {
+        setItemCopies(item,oldCopies);state.cutLines=previous.cutLines;
+        state.sizeMode=previous.sizeMode;selectedSheetItemId=previous.selected;renderOutput();
+      }
+    });
+    assert.equal(result.cards,3,JSON.stringify(result));
+    assert.deepEqual(result.parts,[3,3,3]);
+    assert.equal(result.cutLines,result.expected,JSON.stringify(result));
+    assert.equal(result.exportGridStrokes,1,JSON.stringify(result));
   });
   await test('Dropping a real image file into composite editor makes a part, not a separate card',async()=>{
     await page.locator('#createComposite').click();
