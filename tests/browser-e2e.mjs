@@ -1084,6 +1084,7 @@ try {
     assert.deepEqual(exportResult,{pdf:'application/pdf',png:'image/png'});
   });
   await test('Dragging URL respects browser CORS failure with clear fallback',async()=>{
+    await page.evaluate(()=>{state.pane='settings';syncPane();});
     await page.locator('#createComposite').click();
     const result=await page.evaluate(async()=>{
       const initial=compositeDraft.parts.length;
