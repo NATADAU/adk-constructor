@@ -1013,9 +1013,12 @@ function captionShown(item) {
 // The font grows with card size; text sits close to the bottom edge.
 function captionLayout(plan) {
   const h = plan.card.h;
-  const height = Math.max(7, Math.min(18, h * .23));
   const twoLines = h >= 70;
-  const font = height * (twoLines ? .38 : .53);
+  const height = Math.max(8.5, Math.min(24, h * (twoLines ? .26 : .23)));
+  // Large cards need genuinely readable labels: ~20 pt at 7 cm and 24 pt at 10 cm.
+  // On small cards avoid using the large-card font, which would clip most words.
+  const font = twoLines ? Math.min(8.5, 7.1 + (h - 70) * .05)
+    : Math.max(4, Math.min(6.2, h * .12 + .1));
   const bottom = .45;
   const lineHeight = font * 1.12;
   return {height, font, bottom, lineHeight, maxLines:twoLines ? 2 : 1, twoLines};
