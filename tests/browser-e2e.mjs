@@ -867,7 +867,11 @@ try {
     assert.deepEqual(result,{preview:'ГРУША',print:'ГРУША',spans:1});
   });
   await test('Composite card can group, move and scale pictures in one printable square', async () => {
+    const modeContainer=page.locator('.mode-chips');
+    assert.equal(await modeContainer.locator('#createComposite').count(),1);
+    assert.equal(await page.locator('#gallery #createComposite').count(),0);
     await page.locator('#createComposite').click();
+    assert.equal(await page.locator('#compositeDialog').isVisible(),true);
     const dataUrl=await page.evaluate(()=>{
       const canvas=document.createElement('canvas');
       canvas.width=100;canvas.height=100;
