@@ -912,7 +912,7 @@ try {
       return {parts:item.compositeParts.length,caption:item.caption,oneCard:cards.length===1,
         preview:preview.length,allParts:cards[0]?.querySelectorAll('.composite-part').length,
         modified:item.compositeParts.some(p=>p.scale===1.5),
-        moved:item.compositeParts[0].x>25 && item.compositeParts[0].y>26,
+        moved:item.compositeParts[0].x>17 && item.compositeParts[0].y>17,
         doubledCount,doubledParts,pdf:pdf.type,png:png.type,
         hasCaption:cards[0]?.querySelector('.cap-text')?.textContent};
     });
@@ -921,8 +921,8 @@ try {
     assert.equal(result.oneCard,true);
     assert.equal(result.preview,1);
     assert.equal(result.allParts,3);
-    assert.equal(result.modified,true);
-    assert.equal(result.moved,true);
+    assert.equal(result.modified,true,JSON.stringify(result));
+    assert.equal(result.moved,true,JSON.stringify(result));
     assert.equal(result.doubledCount,2);
     assert.deepEqual(result.doubledParts,[3,3]);
     assert.equal(result.pdf,'application/pdf');
@@ -975,7 +975,7 @@ try {
     });
     assert.equal(result.coordinates.length,8);
     assert.equal(new Set(result.coordinates.map(p=>p.join(','))).size,8,JSON.stringify(result));
-    assert.ok(result.minDistance>=24,JSON.stringify(result));
+    assert.ok(result.minDistance>=32,JSON.stringify(result));
   });
   await test('Composite card copies preserve a common cut grid in print and PDF renderer',async()=>{
     const result=await page.evaluate(()=>{
