@@ -899,9 +899,17 @@ try {
       const preview=[...document.querySelectorAll('#preview .sheet-card')].filter(c=>c.querySelector('.composite-parts'));
       const pdf=await buildPdfFile();
       const png=await buildPngFile();
+      selectedSheetItemId=item.id;
+      updateSheetCopies(2);
+      const doubled=[...document.querySelectorAll('#printRoot .sheet-card')].filter(c=>c.querySelector('.composite-parts'));
+      const doubledCount=doubled.length;
+      const doubledParts=doubled.map(c=>c.querySelectorAll('.composite-part').length);
+      updateSheetCopies(1);
       return {parts:item.compositeParts.length,caption:item.caption,oneCard:cards.length===1,
         preview:preview.length,allParts:cards[0]?.querySelectorAll('.composite-part').length,
-        modified:item.compositeParts.some(p=>p.scale===1.5),pdf:pdf.type,png:png.type,
+        modified:item.compositeParts.some(p=>p.scale===1.5),
+        moved:item.compositeParts[0].x>28 && item.compositeParts[0].y>36,
+        doubledCount,doubledParts,pdf:pdf.type,png:png.type,
         hasCaption:cards[0]?.querySelector('.cap-text')?.textContent};
     });
     assert.equal(result.parts,3);
@@ -910,6 +918,9 @@ try {
     assert.equal(result.preview,1);
     assert.equal(result.allParts,3);
     assert.equal(result.modified,true);
+    assert.equal(result.moved,true);
+    assert.equal(result.doubledCount,2);
+    assert.deepEqual(result.doubledParts,[3,3]);
     assert.equal(result.pdf,'application/pdf');
     assert.equal(result.png,'image/png');
     assert.equal(result.hasCaption,'ФИЗКУЛЬТУРА');
@@ -926,8 +937,8 @@ try {
       state.sizeMode=previous;renderOutput();
       return values;
     });
-    assert.ok(result[0].font>=5.5,JSON.stringify(result));
-    assert.ok(result[1].font>=6.5,JSON.stringify(result));
+    assert.ok(result[0].font>=7,JSON.stringify(result));
+    assert.ok(result[1].font>=8.4,JSON.stringify(result));
     assert.ok(result[1].font>result[0].font,JSON.stringify(result));
   });
   await page.close();
