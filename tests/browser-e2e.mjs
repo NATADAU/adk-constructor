@@ -888,14 +888,14 @@ try {
     await page.waitForFunction(()=>document.querySelectorAll('#compositeStage .composite-part').length===3);
     assert.equal(await page.locator('#compositeStage .composite-part').count(),3);
     await page.locator('#compositeCaption').fill('ФИЗКУЛЬТУРА');
-    await page.locator('#compositeScale').evaluate(el=>{
-      el.value='1.5';el.dispatchEvent(new Event('input',{bubbles:true}));
-    });
     const first=await page.locator('#compositeStage .composite-part').first().boundingBox();
     await page.mouse.move(first.x+first.width/2,first.y+first.height/2);
     await page.mouse.down();
     await page.mouse.move(first.x+first.width/2+15,first.y+first.height/2+10,{steps:4});
     await page.mouse.up();
+    await page.locator('#compositeScale').evaluate(el=>{
+      el.value='1.5';el.dispatchEvent(new Event('input',{bubbles:true}));
+    });
     await page.locator('#compositeSave').click();
     const result=await page.evaluate(async()=>{
       const item=state.items.at(-1);
