@@ -420,6 +420,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   position: absolute; display: block; inset: auto; width: 32%; height: 32%; object-fit: contain;
   transform-origin: center; pointer-events: none;
 }
+ .composite-dialog .crop-box { box-sizing: border-box; width: min(100%, 550px); }
 .composite-editor-stage { position: relative; width: min(100%, 380px); aspect-ratio: 1; background: #fff; border: 2px solid #019BAB; overflow: hidden; touch-action: none; user-select: none; margin: 0 auto; }
 .composite-editor-stage .composite-part { pointer-events: auto; cursor: grab; }
 .composite-editor-stage .composite-part.is-selected { outline: 2px dashed #c22662; outline-offset: 1px; cursor: grab; }
@@ -1564,6 +1565,7 @@ function tileElement(item) {
 // A composite card owns several image URLs, but remains one printable card.
 // Coordinates are percentages of the image area (excluding the shared caption).
 let compositeDraft = null;
+let compositeBusy = false;
 let compositeAddedUrls = new Set();
 let compositeSelected = -1;
 let compositeReturnFocus = null;
@@ -1612,14 +1614,15 @@ function renderCompositeEditor() {
   const selected=compositeDraft.parts[compositeSelected];
   $('compositeScale').disabled = !selected;
   $('compositeRemove').disabled = !selected;
-  $('compositeSave').disabled = !compositeDraft.parts.length;
+  $('compositeSave').disabled = compositeBusy || !compositeDraft.parts.length;
+  $('compositeCancel').disabled = compositeBusy;
   $('compositeScale').value = selected ? String(selected.scale) : '1';
   $('compositeScaleText').textContent = selected ? Math.round(selected.scale*100) + '%' : '—';
   $('compositeStatus').textContent = compositeDraft.parts.length +
     ' изображений в карточке. Выберите картинку для перемещения и изменения размера.';
 }
 function closeCompositeEditor(save) {
-  if (!compositeDraft) return;
+  if (!compositeDraft || compositeBusy) return;
   const draft = compositeDraft;
   if (save) {
     if (!draft.parts.length) return;
@@ -1664,8 +1667,11 @@ $('compositeCancel').addEventListener('click',()=>closeCompositeEditor(false));
 $('compositeSave').addEventListener('click',()=>closeCompositeEditor(true));
 $('compositeAdd').addEventListener('click',()=>$('compositeFiles').click());
 $('compositeFiles').addEventListener('change',async event=>{
-  if (!compositeDraft) return;
+  if (!compositeDraft || compositeBusy) return;
+  compositeBusy=true;
   $('compositeAdd').disabled=true;
+  $('compositeCancel').disabled=true;
+  $('compositeSave').disabled=true;
   try {
     let rejected=0;
     for (const file of [...event.target.files]) {
@@ -1674,7 +1680,8 @@ $('compositeFiles').addEventListener('change',async event=>{
       let type='';
       try {type=await sniff(file);} catch (_) {}
       if (!type) {rejected++;continue;}
-      const pixels=await declaredPixels(file,type);
+      let pixels=0;
+      try {pixels=await declaredPixels(file,type);} catch (_) {rejected++;continue;}
       if (pixels>MAX_IMAGE_PIXELS) {rejected++;continue;}
       try {
         const normalized=await normalizeUpload(file.type === type ? file : new Blob([file],{type}),type);
@@ -1690,8 +1697,11 @@ $('compositeFiles').addEventListener('change',async event=>{
     renderCompositeEditor();
     if (rejected) $('compositeStatus').textContent += ' Пропущено файлов: ' + rejected + '. Максимум 8 картинок, PNG/JPG/WEBP до 25 МБ.';
   } finally {
+    compositeBusy=false;
     $('compositeFiles').value='';
     $('compositeAdd').disabled=false;
+    $('compositeCancel').disabled=false;
+    $('compositeSave').disabled=!compositeDraft || !compositeDraft.parts.length;
   }
 });
 $('compositeScale').addEventListener('input',event=>{
