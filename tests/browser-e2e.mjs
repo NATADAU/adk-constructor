@@ -931,7 +931,7 @@ try {
   });
   await test('Composite editing stage keeps correct aspect on short laptop viewport',async()=>{
     await page.setViewportSize({width:900,height:830});
-    await page.evaluate(()=>{state.sizeMode='70';syncSizeButtons();});
+    await page.evaluate(()=>{state.pane='settings';syncPane();state.sizeMode='70';syncSizeButtons();});
     await page.locator('#createComposite').click();
     const result=await page.evaluate(()=>{
       const rect=$('compositeStage').getBoundingClientRect();
