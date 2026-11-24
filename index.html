@@ -414,6 +414,22 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .tile-actions button { flex: 1 1 140px; min-height: 44px; border: 1px solid var(--clp-line-strong); background: white; border-radius: 10px; padding: 8px 10px; font-size: 14px; font-weight: 600; }
 .tile-actions .crop-btn { color: var(--clp-teal-dark); }
 .tile-actions .remove { color: #ac2454; }
+.composite-parts { position: absolute; inset: 0; background: white; overflow: hidden; }
+.composite-part, .pic .composite-part, .tile-crop-viewport .composite-part {
+  position: absolute; display: block; inset: auto; width: 32%; height: 32%; object-fit: contain;
+  transform-origin: center; pointer-events: none;
+}
+ .composite-dialog .crop-box { box-sizing: border-box; width: min(100%, 550px); }
+.composite-editor-stage { position: relative; width: min(100%, 380px); aspect-ratio: 1; background: #fff; border: 2px solid #019BAB; overflow: hidden; touch-action: none; user-select: none; margin: 0 auto; }
+.composite-editor-stage .composite-part { pointer-events: auto; cursor: grab; }
+.composite-editor-stage .composite-part.is-selected { outline: 2px dashed #c22662; outline-offset: 1px; cursor: grab; }
+.composite-editor-stage .composite-part:focus-visible { outline: 3px solid #006d79; }
+.composite-editor-hint { font-size: 13px; color: #345; margin: 0; }
+.composite-editor-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.composite-editor-controls button { min-height: 44px; }
+.composite-editor-controls label { flex: 1 1 180px; }
+.composite-editor-controls input[type="range"] { width: 100%; }
+@media print { .composite-dialog { display: none !important; } }
 .zoom-seg {
   display: inline-flex;
   border: 1px solid var(--clp-line);
@@ -495,16 +511,20 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   margin: 0;
   box-sizing: border-box;
   height: var(--cap);
-  padding: 0 1.4mm 1mm;
+  padding: 0 1.4mm .45mm;
   text-align: center;
   font-family: Arial, "Segoe UI", sans-serif;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.12;
   color: #2A2A2A;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
 }
-.cap.one { font-size: calc(var(--cap) * .46); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cap.two {
-  font-size: calc(var(--cap) * .34);
+.cap .cap-text { display: block; width: 100%; min-width: 0; }
+.cap.one .cap-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap.two .cap-text {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -656,6 +676,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
             <button type="button" class="chip" data-mode="pictures">Картинки</button>
             <button type="button" class="chip active" data-mode="cards" aria-pressed="true">Карточки</button>
             <button type="button" class="chip" data-mode="matching" aria-pressed="false">Соедини линиями</button>
+            <button type="button" class="chip" id="createComposite" aria-haspopup="dialog" aria-controls="compositeDialog">Составная карточка</button>
           </div>
         </div>
         <p id="matchingHelp" class="size-now" hidden>Назначьте каждой картинке сторону: слева или справа. Середина листа останется пустой, чтобы провести линии. Для удобства попробуйте альбомный лист.</p>
@@ -806,6 +827,27 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   <div class="crop-actions"><button type="button" id="cropReset">Сбросить</button><button type="button" id="cropCancel">Отмена</button><button type="button" id="cropApply" class="crop-apply">Применить</button></div>
  </div>
 </div>
+<div class="crop-dialog composite-dialog" id="compositeDialog" hidden role="dialog" aria-modal="true" aria-labelledby="compositeTitle">
+  <div class="crop-box">
+    <h2 id="compositeTitle">Составная карточка</h2>
+    <p class="composite-editor-hint">Несколько картинок на одном фоне. Выберите картинку, перетащите её пальцем или мышью, настройте размер. Общая подпись внизу.</p>
+    <div id="compositeStage" class="composite-editor-stage" tabindex="0" aria-label="Расположение картинок внутри карточки"></div>
+    <label class="tile-label">Общая подпись<input id="compositeCaption" class="control" type="text" maxlength="80" autocomplete="off" placeholder="Например, ФИЗКУЛЬТУРА"></label>
+    <input type="file" id="compositeFiles" accept="image/png,image/jpeg,image/webp" multiple hidden>
+    <div class="composite-editor-controls">
+      <button id="compositeAdd" type="button" class="btn secondary">+ Добавить картинки</button>
+      <label>Размер выбранной картинки: <output id="compositeScaleText">100%</output>
+        <input id="compositeScale" type="range" min="0.4" max="2.5" step=".05" value="1">
+      </label>
+      <button id="compositeRemove" type="button" class="btn secondary">Удалить выбранную</button>
+    </div>
+    <p class="composite-editor-hint" id="compositeStatus" role="status"></p>
+    <div class="crop-actions">
+      <button id="compositeCancel" type="button">Отмена</button>
+      <button id="compositeSave" type="button" class="crop-apply">Сохранить карточку</button>
+    </div>
+  </div>
+</div>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -900,6 +942,23 @@ function layoutPlan() {
 }
 // Each printed copy is a lightweight view of one uploaded image. Only edited
 // copies have overrides; the binary image and object URL are never duplicated.
+function compositePartStyle(part) {
+  return 'left:' + part.x + '%;top:' + part.y + '%;transform:translate(-50%,-50%) scale(' + part.scale + ')';
+}
+function makeCompositeParts(parts) {
+  const layer = document.createElement('div');
+  layer.className = 'composite-parts';
+  for (const part of parts) {
+    const image = document.createElement('img');
+    image.className = 'composite-part';
+    image.alt = '';
+    image.draggable = false;
+    image.src = part.url;
+    image.style.cssText = compositePartStyle(part);
+    layer.append(image);
+  }
+  return layer;
+}
 function slots() {
   const list = [];
   const items = state.mode === 'matching'
@@ -950,6 +1009,20 @@ function cardPosition(item,index,pageItems,plan) {
 function captionShown(item) {
   return state.showLabels && !!item.caption.trim();
 }
+// Shared text geometry for screen, print, and raster export.
+// The font grows with card size; text sits close to the bottom edge.
+function captionLayout(plan) {
+  const h = plan.card.h;
+  const twoLines = h >= 70;
+  const height = Math.max(8.5, Math.min(24, h * (twoLines ? .26 : .23)));
+  // Large cards need genuinely readable labels: ~20 pt at 7 cm and 24 pt at 10 cm.
+  // On small cards avoid using the large-card font, which would clip most words.
+  const font = twoLines ? Math.min(8.5, 7.1 + (h - 70) * .05)
+    : Math.max(4, Math.min(6.2, h * .12 + .1));
+  const bottom = .45;
+  const lineHeight = font * 1.12;
+  return {height, font, bottom, lineHeight, maxLines:twoLines ? 2 : 1, twoLines};
+}
 // A copy can override its caption; copies that still have the source's old
 // caption must follow subsequent source edits rather than stay stuck at blank.
 function updateSourceCaption(item, text) {
@@ -965,7 +1038,8 @@ function updateSourceCaption(item, text) {
 function structureKey(plan) {
   const ids = state.items.map(item => item.id + 'x' + normalizeCopies(item.copies) +
     (item.crop ? ':crop' + [item.crop.zoom, item.crop.x, item.crop.y].join(',') : '') +
-    ':copies' + JSON.stringify(item.copyOverrides || {})).join(',');
+    ':copies' + JSON.stringify(item.copyOverrides || {}) +
+    ':parts' + JSON.stringify(item.compositeParts || [])).join(',');
   // Caption text is part of the rendered card and accessibility label.
   // Include its value, not just whether a caption exists, in the render key.
   const caps = state.items.map(item => item.caption).join('\u0001');
@@ -1074,20 +1148,28 @@ function buildCard(item, plan, x, y) {
   else if (!state.cutLines) card.classList.add('ghost-edge');
   const pic = document.createElement('div');
   pic.className = 'pic';
-  const img = document.createElement('img');
-  img.alt = item.caption.trim() || 'Изображение без подписи';
-  img.src = item.url;
-  pic.append(img);
-  const effectiveCrop = boundedItemCrop(item, plan);
-  if (effectiveCrop) { img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')'; }
+  if (item.compositeParts) {
+    pic.append(makeCompositeParts(item.compositeParts));
+  } else {
+    const img = document.createElement('img');
+    img.alt = item.caption.trim() || 'Изображение без подписи';
+    img.src = item.url;
+    pic.append(img);
+    const effectiveCrop = boundedItemCrop(item, plan);
+    if (effectiveCrop) { img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')'; }
+  }
   card.append(pic);
   if (captionShown(item)) {
     const text = item.caption.trim();
-    const capH = Math.max(6, Math.min(12, plan.card.h * 0.2));
-    card.style.setProperty('--cap', capH + 'mm');
+    const metrics = captionLayout(plan);
+    card.style.setProperty('--cap', metrics.height + 'mm');
     const cap = document.createElement('p');
-    cap.className = 'cap ' + (plan.card.h >= 70 ? 'two' : 'one');
-    cap.textContent = text;
+    cap.className = 'cap ' + (metrics.twoLines ? 'two' : 'one');
+    cap.style.fontSize = metrics.font + 'mm';
+    const capText = document.createElement('span');
+    capText.className = 'cap-text';
+    capText.textContent = text;
+    cap.append(capText);
     card.append(cap);
   }
   return card;
@@ -1182,7 +1264,8 @@ function syncCaptionText() {
   ['preview', 'printRoot'].forEach(id => {
     $(id).querySelectorAll('.sheet-card').forEach((card, index) => {
       const cap = card.querySelector('.cap');
-      if (cap && all[index]) cap.textContent = all[index].caption.trim();
+      const textNode = cap && cap.querySelector('.cap-text');
+      if (textNode && all[index]) textNode.textContent = all[index].caption.trim();
     });
   });
 }
@@ -1397,7 +1480,7 @@ function renderGallery() {
 function syncGalleryCropPreviews(plan) {
   document.querySelectorAll('#gallery .tile').forEach(tile => {
     const item = findItem(tile.dataset.id);
-    if (!item) return;
+    if (!item || item.compositeParts) return;
     const viewport = cropViewport(plan,captionShown(item));
     const frame = tile.querySelector('.tile-crop-viewport');
     const img = frame && frame.querySelector('img');
@@ -1422,13 +1505,17 @@ function tileElement(item) {
   const cropPreview = document.createElement('div');
   cropPreview.className = 'tile-crop-viewport';
   cropPreview.style.setProperty('--crop-ratio', String(viewport.w / viewport.h));
-  const img = document.createElement('img');
-  img.alt = '';
-  img.draggable = false;
-  img.src = item.url;
-  const effectiveCrop = boundedItemCrop(item, plan);
-  if (effectiveCrop) img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')';
-  cropPreview.append(img);
+  if (item.compositeParts) {
+    cropPreview.append(makeCompositeParts(item.compositeParts));
+  } else {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    img.src = item.url;
+    const effectiveCrop = boundedItemCrop(item, plan);
+    if (effectiveCrop) img.style.transform = 'translate(' + effectiveCrop.x + '%, ' + effectiveCrop.y + '%) scale(' + effectiveCrop.zoom + ')';
+    cropPreview.append(img);
+  }
   frame.append(cropPreview);
   const label = document.createElement('label');
   label.className = 'tile-label';
@@ -1463,8 +1550,8 @@ function tileElement(item) {
   const cropBtn = document.createElement('button');
   cropBtn.type = 'button';
   cropBtn.className = 'crop-btn';
-  cropBtn.textContent = 'Размер и кадр';
-  cropBtn.setAttribute('aria-label','Изменить размер и кадр изображения');
+  cropBtn.textContent = item.compositeParts ? 'Редактировать композицию' : 'Размер и кадр';
+  cropBtn.setAttribute('aria-label',item.compositeParts ? 'Редактировать составную карточку' : 'Изменить размер и кадр изображения');
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'remove';
@@ -1474,26 +1561,232 @@ function tileElement(item) {
   tile.append(frame, label, placement, captionWarning, actions);
   return tile;
 }
+// A composite card owns several image URLs, but remains one printable card.
+// Coordinates are percentages of the image area (excluding the shared caption).
+let compositeDraft = null;
+let compositeBusy = false;
+let compositeAddedUrls = new Set();
+let compositeSelected = -1;
+let compositeReturnFocus = null;
+function openCompositeEditor(item = null) {
+  if (compositeDraft) return;
+  compositeReturnFocus = document.activeElement;
+  compositeDraft = {
+    source:item,
+    parts:item ? item.compositeParts.map(p => ({...p})) : [],
+    caption:item ? item.caption : ''
+  };
+  compositeAddedUrls = new Set();
+  compositeSelected = compositeDraft.parts.length ? 0 : -1;
+  $('compositeTitle').textContent = item ? 'Редактирование составной карточки' : 'Новая составная карточка';
+  $('compositeCaption').value = compositeDraft.caption;
+  $('compositeDialog').hidden = false;
+  document.body.style.overflow = 'hidden';
+  renderCompositeEditor();
+  $('compositeAdd').focus();
+}
+function renderCompositeEditor() {
+  if (!compositeDraft) return;
+  const stage = $('compositeStage');
+  const plan = layoutPlan();
+  const viewport = cropViewport(plan, true);
+  stage.style.aspectRatio = viewport.w + ' / ' + viewport.h;
+  stage.replaceChildren();
+  compositeDraft.parts.forEach((part,index) => {
+    const img = document.createElement('img');
+    img.className = 'composite-part' + (index === compositeSelected ? ' is-selected' : '');
+    img.src = part.url;
+    img.alt = 'Картинка ' + (index + 1);
+    img.draggable = false;
+    img.tabIndex = 0;
+    img.dataset.index = String(index);
+    img.style.cssText = compositePartStyle(part);
+    img.style.pointerEvents = 'auto';
+    stage.append(img);
+  });
+  if (!compositeDraft.parts.length) {
+    const note=document.createElement('p');
+    note.className='empty';
+    note.textContent='Нажмите «Добавить картинки» и выберите мяч, скакалку, обруч или другие изображения.';
+    stage.append(note);
+  }
+  const selected=compositeDraft.parts[compositeSelected];
+  $('compositeScale').disabled = !selected;
+  $('compositeRemove').disabled = !selected;
+  $('compositeSave').disabled = compositeBusy || !compositeDraft.parts.length;
+  $('compositeCancel').disabled = compositeBusy;
+  $('compositeScale').value = selected ? String(selected.scale) : '1';
+  $('compositeScaleText').textContent = selected ? Math.round(selected.scale*100) + '%' : '—';
+  $('compositeStatus').textContent = compositeDraft.parts.length +
+    ' изображений в карточке. Выберите картинку для перемещения и изменения размера.';
+}
+function closeCompositeEditor(save) {
+  if (!compositeDraft || compositeBusy) return;
+  const draft = compositeDraft;
+  if (save) {
+    if (!draft.parts.length) return;
+    if (state.mode !== 'cards') applyModeDefaults('cards');
+    if (draft.source) {
+      const previous = new Set(draft.source.compositeParts.map(p=>p.url));
+      const remaining = new Set(draft.parts.map(p=>p.url));
+      for (const url of previous) if (!remaining.has(url)) {
+        URL.revokeObjectURL(url);clearExportBitmapCache(url);
+      }
+      draft.source.compositeParts = draft.parts;
+      draft.source.url = draft.parts[0].url;
+      updateSourceCaption(draft.source,$('compositeCaption').value);
+    } else {
+      state.items.push({
+        id:String(++seq),url:draft.parts[0].url,caption:$('compositeCaption').value,
+        copies:1,compositeParts:draft.parts
+      });
+    }
+    if ($('compositeCaption').value.trim() && !state.showLabels) {
+      state.showLabels=true;$('showLabels').checked=true;
+    }
+  } else {
+    for (const url of compositeAddedUrls) {
+      URL.revokeObjectURL(url);clearExportBitmapCache(url);
+    }
+  }
+  compositeDraft = null;
+  compositeAddedUrls.clear();
+  compositeSelected = -1;
+  $('compositeFiles').value = '';
+  $('compositeDialog').hidden = true;
+  document.body.style.overflow = '';
+  if (save) {
+    renderGallery();renderOutput();
+    state.pane='sheet';syncPane();
+  }
+  if (compositeReturnFocus && compositeReturnFocus.isConnected) compositeReturnFocus.focus();
+  compositeReturnFocus=null;
+}
+$('createComposite').addEventListener('click',()=>openCompositeEditor());
+$('compositeCancel').addEventListener('click',()=>closeCompositeEditor(false));
+$('compositeSave').addEventListener('click',()=>closeCompositeEditor(true));
+$('compositeAdd').addEventListener('click',()=>$('compositeFiles').click());
+$('compositeFiles').addEventListener('change',async event=>{
+  if (!compositeDraft || compositeBusy) return;
+  compositeBusy=true;
+  $('compositeAdd').disabled=true;
+  $('compositeCancel').disabled=true;
+  $('compositeSave').disabled=true;
+  try {
+    let rejected=0;
+    for (const file of [...event.target.files]) {
+      if (compositeDraft.parts.length >= 8) {rejected++;continue;}
+      if (file.size > 25*1024*1024) {rejected++;continue;}
+      let type='';
+      try {type=await sniff(file);} catch (_) {}
+      if (!type) {rejected++;continue;}
+      let pixels=0;
+      try {pixels=await declaredPixels(file,type);} catch (_) {rejected++;continue;}
+      if (pixels>MAX_IMAGE_PIXELS) {rejected++;continue;}
+      try {
+        const normalized=await normalizeUpload(file.type === type ? file : new Blob([file],{type}),type);
+        const url=URL.createObjectURL(normalized.blob);
+        compositeAddedUrls.add(url);
+        const n=compositeDraft.parts.length;
+        const positions=[[28,36],[72,36],[50,72],[25,72],[75,72],[50,35],[32,55],[68,55]];
+        const [x,y]=positions[n];
+        compositeDraft.parts.push({url,x,y,scale:1});
+        compositeSelected=n;
+      } catch (_) {rejected++;}
+    }
+    renderCompositeEditor();
+    if (rejected) $('compositeStatus').textContent += ' Пропущено файлов: ' + rejected + '. Максимум 8 картинок, PNG/JPG/WEBP до 25 МБ.';
+  } finally {
+    compositeBusy=false;
+    $('compositeFiles').value='';
+    $('compositeAdd').disabled=false;
+    $('compositeCancel').disabled=false;
+    $('compositeSave').disabled=!compositeDraft || !compositeDraft.parts.length;
+  }
+});
+$('compositeScale').addEventListener('input',event=>{
+  if (!compositeDraft || !compositeDraft.parts[compositeSelected]) return;
+  compositeDraft.parts[compositeSelected].scale=Number(event.target.value);
+  renderCompositeEditor();
+});
+$('compositeRemove').addEventListener('click',()=>{
+  if (!compositeDraft || compositeSelected<0) return;
+  const removed=compositeDraft.parts.splice(compositeSelected,1)[0];
+  // Newly uploaded URLs remain owned by the draft until Save or Cancel.
+  if (removed && compositeAddedUrls.has(removed.url)) {
+    URL.revokeObjectURL(removed.url);
+    compositeAddedUrls.delete(removed.url);
+    clearExportBitmapCache(removed.url);
+  }
+  compositeSelected=Math.min(compositeSelected,compositeDraft.parts.length-1);
+  renderCompositeEditor();
+});
+const compositeStage=$('compositeStage');
+let compositeDrag=null;
+compositeStage.addEventListener('pointerdown',event=>{
+  const piece=event.target.closest('.composite-part');
+  if (!piece || !compositeDraft) return;
+  event.preventDefault();
+  compositeSelected=Number(piece.dataset.index);
+  const part=compositeDraft.parts[compositeSelected];
+  if (!part) return;
+  const rect=compositeStage.getBoundingClientRect();
+  compositeDrag={id:event.pointerId,index:compositeSelected,startX:event.clientX,startY:event.clientY,
+    x:part.x,y:part.y,width:rect.width,height:rect.height};
+  compositeStage.setPointerCapture(event.pointerId);
+  renderCompositeEditor();
+});
+compositeStage.addEventListener('pointermove',event=>{
+  if (!compositeDraft || !compositeDrag || compositeDrag.id!==event.pointerId) return;
+  const part=compositeDraft.parts[compositeDrag.index];
+  if (!part) return;
+  part.x=Math.max(0,Math.min(100,compositeDrag.x+(event.clientX-compositeDrag.startX)/compositeDrag.width*100));
+  part.y=Math.max(0,Math.min(100,compositeDrag.y+(event.clientY-compositeDrag.startY)/compositeDrag.height*100));
+  const node=compositeStage.querySelectorAll('.composite-part')[compositeDrag.index];
+  if (node) node.style.cssText=compositePartStyle(part);
+});
+const endCompositeDrag=()=>{compositeDrag=null;};
+compositeStage.addEventListener('pointerup',endCompositeDrag);
+compositeStage.addEventListener('pointercancel',endCompositeDrag);
+compositeStage.addEventListener('lostpointercapture',endCompositeDrag);
+compositeStage.addEventListener('keydown',event=>{
+  if (!compositeDraft || !event.target.classList.contains('composite-part')) return;
+  const index=Number(event.target.dataset.index),part=compositeDraft.parts[index];
+  if (!part || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+  event.preventDefault();
+  const step=event.shiftKey?5:1;
+  if (event.key==='ArrowLeft')part.x=Math.max(0,part.x-step);
+  if (event.key==='ArrowRight')part.x=Math.min(100,part.x+step);
+  if (event.key==='ArrowUp')part.y=Math.max(0,part.y-step);
+  if (event.key==='ArrowDown')part.y=Math.min(100,part.y+step);
+  event.target.style.cssText=compositePartStyle(part);
+});
+$('compositeDialog').addEventListener('click',event=>{
+  if (event.target===$('compositeDialog')) closeCompositeEditor(false);
+});
+document.addEventListener('keydown',event=>{
+  if (event.key==='Escape' && compositeDraft) {event.preventDefault();closeCompositeEditor(false);}
+});
+
 let cropItem = null;
 let cropDraft = { zoom: 1, x: 0, y: 0 };
 let editingCopy = null;
 function cropViewport(plan, captionVisible) {
   const innerInset = 2 * borderWidth() + 2.4;
-  const capHeight = captionVisible ? Math.max(6, Math.min(12, plan.card.h * .2)) : 0;
+  const capHeight = captionVisible ? captionLayout(plan).height : 0;
   return { w: Math.max(1, plan.card.w - innerInset), h: Math.max(1, plan.card.h - innerInset - capHeight) };
 }
 // Measure captions with the same text wrapping and width as PDF export.
 const captionMeasureCanvas = document.createElement('canvas');
 function captionOverflows(item, plan, forceVisible = false) {
   if (!item.caption || !item.caption.trim() || (!forceVisible && !captionShown(item))) return false;
-  const large = plan.card.h >= 70;
-  const capH = Math.max(6, Math.min(12, plan.card.h * .2));
-  const fontMm = capH * (large ? .34 : .46);
+  const metrics = captionLayout(plan);
+  const fontMm = metrics.font;
   const width = exportPixels(plan.card.w - 2*borderWidth() - 2.8, 96);
   const ctx = captionMeasureCanvas.getContext('2d');
   if (!ctx || width <= 0) return false;
   ctx.font = '700 ' + exportPixels(fontMm, 96) + 'px Arial, sans-serif';
-  const maxLines = large ? Math.max(1, Math.floor((capH-1)/(fontMm*1.15))) : 1;
+  const maxLines = metrics.maxLines;
   const lines = wrapExportCaption(ctx,item.caption,width,maxLines);
   return lines.join(' ') !== item.caption.trim().replace(/\s+/g,' ');
 }
@@ -1838,7 +2131,8 @@ async function addFiles(list) {
   }
 }
 function resetAll() {
-  state.items.forEach(item => URL.revokeObjectURL(item.url));
+  state.items.forEach(item => (item.compositeParts ? item.compositeParts.map(p => p.url) : [item.url])
+    .forEach(url => URL.revokeObjectURL(url)));
   clearExportBitmapCache();
   state.items = [];
   selectedSheetItemId = null;
@@ -1921,30 +2215,32 @@ function wrapExportCaption(ctx, text, width, maxLines) {
 }
 function drawExportCaption(ctx, item, plan, x, y, dpi) {
   if (!captionShown(item)) return;
-  const capH = Math.max(6, Math.min(12, plan.card.h * .2));
-  const large = plan.card.h >= 70;
-  const fontMm = capH * (large ? .34 : .46);
+  const metrics = captionLayout(plan);
+  const capH = metrics.height;
+  const fontMm = metrics.font;
   const bw = borderWidth();
   const width = exportPixels(plan.card.w - 2*bw - 2.8, dpi);
   ctx.fillStyle = '#2A2A2A';
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
+  ctx.textBaseline = 'bottom';
   ctx.font = '700 ' + exportPixels(fontMm, dpi) + 'px Arial, sans-serif';
-  const lineHeight = exportPixels(fontMm * 1.15, dpi);
-  const maxLines = large ? Math.max(1, Math.floor((capH - 1) / (fontMm * 1.15))) : 1;
+  const lineHeight = exportPixels(metrics.lineHeight, dpi);
+  const maxLines = metrics.maxLines;
   const lines = wrapExportCaption(ctx, item.caption, width, maxLines);
   const startX = exportPixels(x + plan.card.w / 2, dpi);
-  const startY = exportPixels(y + plan.card.h - bw - capH, dpi);
+  const capTop = exportPixels(y + plan.card.h - bw - capH, dpi);
+  const bottomY = exportPixels(y + plan.card.h - bw - metrics.bottom, dpi);
   ctx.save();
   ctx.beginPath();
-  ctx.rect(exportPixels(x+bw+1.4,dpi),startY,width,exportPixels(capH-1,dpi));
+  ctx.rect(exportPixels(x+bw+1.4,dpi),capTop,width,exportPixels(capH,dpi));
   ctx.clip();
-  lines.forEach((line,i) => ctx.fillText(line,startX,startY+i*lineHeight));
+  const firstLineY = bottomY - (lines.length - 1) * lineHeight;
+  lines.forEach((line,i) => ctx.fillText(line,startX,firstLineY+i*lineHeight));
   ctx.restore();
 }
 function exportCropArea(plan, item, x, y) {
   const bw = borderWidth();
-  const capH = captionShown(item) ? Math.max(6, Math.min(12, plan.card.h*.2)) : 0;
+  const capH = captionShown(item) ? captionLayout(plan).height : 0;
   return {
     x: x + bw + 1.2, y: y + bw + 1.2,
     w: Math.max(1, plan.card.w - 2*bw - 2.4),
@@ -1991,17 +2287,39 @@ async function prepareExportImages(pageItems) {
   const images = new Map(), temporary = [];
   try {
     for (const item of pageItems) {
-      if (images.has(item.url)) continue;
-      const decoded = await decodeExportImage(item);
-      images.set(item.url, decoded.image);
-      if (decoded.temporary && typeof ImageBitmap !== 'undefined' &&
-          decoded.image instanceof ImageBitmap) temporary.push(decoded.image);
+      const sources = item.compositeParts || [item];
+      for (const source of sources) {
+        if (images.has(source.url)) continue;
+        const decoded = await decodeExportImage(source);
+        images.set(source.url, decoded.image);
+        if (decoded.temporary && typeof ImageBitmap !== 'undefined' &&
+            decoded.image instanceof ImageBitmap) temporary.push(decoded.image);
+      }
     }
     return {images,release:() => temporary.forEach(bitmap=>bitmap.close())};
   } catch (error) {
     temporary.forEach(bitmap=>bitmap.close());
     throw error;
   }
+}
+function drawExportComposite(ctx, item, plan, x, y, images, dpi) {
+  const area = exportCropArea(plan, item, x, y);
+  const sx = exportPixels(area.x,dpi), sy = exportPixels(area.y,dpi);
+  const w = exportPixels(area.w,dpi), h = exportPixels(area.h,dpi);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(sx,sy,w,h); ctx.clip();
+  for (const part of item.compositeParts) {
+    const image = images.get(part.url);
+    if (!image) continue;
+    const iw = image.naturalWidth || image.width, ih = image.naturalHeight || image.height;
+    if (!(iw > 0 && ih > 0)) continue;
+    const boxW = w * .32 * part.scale, boxH = h * .32 * part.scale;
+    const fit = Math.min(boxW / iw, boxH / ih);
+    const dw = iw * fit, dh = ih * fit;
+    const cx = sx + w * part.x / 100, cy = sy + h * part.y / 100;
+    ctx.drawImage(image,cx-dw/2,cy-dh/2,dw,dh);
+  }
+  ctx.restore();
 }
 function drawExportCrop(ctx, item, plan, x, y, image, dpi) {
   const area = exportCropArea(plan, item, x, y);
@@ -2052,7 +2370,8 @@ function renderExportPage(items, plan, images, dpi=EXPORT_DPI) {
   ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
   items.forEach((item,index)=>{
     const {x,y}=cardPosition(item,index,items,plan);
-    drawExportCrop(ctx,item,plan,x,y,images.get(item.url),dpi);
+    if (item.compositeParts) drawExportComposite(ctx,item,plan,x,y,images,dpi);
+    else drawExportCrop(ctx,item,plan,x,y,images.get(item.url),dpi);
     drawExportCaption(ctx,item,plan,x,y,dpi);
     drawExportBorder(ctx,plan,x,y,dpi);
   });
@@ -2483,6 +2802,7 @@ function editPreviewCard(target) {
   const source = findItem(card.dataset.sourceId);
   const index = Number(card.dataset.copyIndex);
   if (!source || !Number.isInteger(index) || index < 0 || index >= normalizeCopies(source.copies)) return;
+  if (source.compositeParts) { openCompositeEditor(source); return; }
   selectedSheetItemId = source.id;
   syncSheetQuantity();
   openCrop(source,index);
@@ -2501,15 +2821,21 @@ $('gallery').addEventListener('click', event => {
   const item = findItem(tile.dataset.id);
   if (!item) return;
   if (event.target.closest('.remove')) {
-    URL.revokeObjectURL(item.url);
-    clearExportBitmapCache(item.url);
+    for (const url of item.compositeParts ? item.compositeParts.map(part => part.url) : [item.url]) {
+      URL.revokeObjectURL(url);
+      clearExportBitmapCache(url);
+    }
     state.items = state.items.filter(entry => entry !== item);
     $('status').textContent = 'Изображение убрано из набора.';
     renderGallery();
     renderOutput();
     return;
   }
-  if (event.target.closest('.crop-btn')) { openCrop(item); return; }
+  if (event.target.closest('.crop-btn')) {
+    if (item.compositeParts) openCompositeEditor(item);
+    else openCrop(item);
+    return;
+  }
 
 });
 $('gallery').addEventListener('input', event => {

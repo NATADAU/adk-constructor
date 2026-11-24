@@ -591,7 +591,7 @@ try {
         item.caption='Очень длинная подпись которая не должна обрезать третью строку посередине: требуется ограничение в две строки';
         renderOutput();
         const cap=document.querySelector('#printRoot .cap');
-        const css=getComputedStyle(cap);
+        const css=getComputedStyle(cap.querySelector('.cap-text'));
         const plan=layoutPlan(),bw=borderWidth();
         const captured=[];
         const ctx={
@@ -606,7 +606,7 @@ try {
           clamp:css.webkitLineClamp,display:css.display,
           clip:captured[0],
           expectedX:mmToPixels(bw+1.4),
-          expectedY:mmToPixels(plan.card.h-bw-Math.max(6,Math.min(12,plan.card.h*.2))),
+          expectedY:mmToPixels(plan.card.h-bw-captionLayout(plan).height),
           expectedW:mmToPixels(plan.card.w-2*bw-2.8)
         };
       } finally {
@@ -820,6 +820,130 @@ try {
     });
     assert.deepEqual(result.printed,['КРАСНОЕ ЯБЛОКО','ДРУГАЯ ПОДПИСЬ','КРАСНОЕ ЯБЛОКО']);
     assert.deepEqual(result.preview,result.printed);
+  });
+  await test('Card captions scale with 3x3, 5x5 and 10x10 sizes and sit near the lower edge', async () => {
+    const result=await page.evaluate(()=>{
+      const previous={items:state.items,mode:state.mode,sizeMode:state.sizeMode,
+        showLabels:state.showLabels};
+      const sample={...state.items[0],id:'caption-type-test',caption:'ЯБЛОКО',copies:1,copyOverrides:{}};
+      const cases=[];
+      try {
+        state.items=[sample];state.mode='cards';state.showLabels=true;
+        for(const size of ['30','50','100']){
+          state.sizeMode=size;
+          renderOutput();
+          const card=document.querySelector('#preview .sheet-card');
+          const cap=card.querySelector('.cap');
+          const text=cap.querySelector('.cap-text');
+          const cardRect=card.getBoundingClientRect();
+          const textRect=text.getBoundingClientRect();
+          cases.push({size,fontPx:parseFloat(getComputedStyle(cap).fontSize),
+            text:text.textContent,lowerGapPx:cardRect.bottom-textRect.bottom,
+            capHeight:captionLayout(layoutPlan()).height});
+        }
+      } finally {Object.assign(state,previous);renderOutput();}
+      return cases;
+    });
+    assert.deepEqual(result.map(x=>x.text),['ЯБЛОКО','ЯБЛОКО','ЯБЛОКО']);
+    assert.ok(result[0].fontPx>=12,JSON.stringify(result));
+    assert.ok(result[1].fontPx>result[0].fontPx,JSON.stringify(result));
+    assert.ok(result[2].fontPx>result[1].fontPx,JSON.stringify(result));
+    assert.ok(result.every(x=>x.lowerGapPx>=0 && x.lowerGapPx<8),JSON.stringify(result));
+  });
+  await test('Caption text retains its bottom-aligned span after an in-place refresh', async () => {
+    const result=await page.evaluate(()=>{
+      const previous={items:state.items,mode:state.mode,sizeMode:state.sizeMode,showLabels:state.showLabels};
+      try {
+        state.items=[{...state.items[0],id:'caption-refresh-test',caption:'ЯБЛОКО',copies:1,copyOverrides:{}}];
+        state.mode='cards';state.sizeMode='50';state.showLabels=true;
+        renderOutput();
+        state.items[0].caption='ГРУША';
+        renderOutput();
+        return {preview:document.querySelector('#preview .cap-text')?.textContent,
+          print:document.querySelector('#printRoot .cap-text')?.textContent,
+          spans:document.querySelectorAll('#preview .cap .cap-text').length};
+      } finally {Object.assign(state,previous);renderOutput();}
+    });
+    assert.deepEqual(result,{preview:'ГРУША',print:'ГРУША',spans:1});
+  });
+  await test('Composite card can group, move and scale pictures in one printable square', async () => {
+    const modeContainer=page.locator('.mode-chips');
+    assert.equal(await modeContainer.locator('#createComposite').count(),1);
+    assert.equal(await page.locator('#gallery #createComposite').count(),0);
+    await page.locator('#createComposite').click();
+    assert.equal(await page.locator('#compositeDialog').isVisible(),true);
+    const dataUrl=await page.evaluate(()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=100;canvas.height=100;
+      const ctx=canvas.getContext('2d');
+      ctx.fillStyle='#019BAB';ctx.fillRect(0,0,100,100);
+      return canvas.toDataURL('image/png');
+    });
+    const imageBuffer=Buffer.from(dataUrl.split(',')[1],'base64');
+    await page.locator('#compositeFiles').setInputFiles([
+      {name:'ball.png',mimeType:'image/png',buffer:imageBuffer},
+      {name:'rope.png',mimeType:'image/png',buffer:imageBuffer},
+      {name:'hoop.png',mimeType:'image/png',buffer:imageBuffer}
+    ]);
+    await page.waitForFunction(()=>document.querySelectorAll('#compositeStage .composite-part').length===3);
+    assert.equal(await page.locator('#compositeStage .composite-part').count(),3);
+    await page.locator('#compositeCaption').fill('ФИЗКУЛЬТУРА');
+    await page.locator('#compositeScale').evaluate(el=>{
+      el.value='1.5';el.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    const first=await page.locator('#compositeStage .composite-part').first().boundingBox();
+    await page.mouse.move(first.x+first.width/2,first.y+first.height/2);
+    await page.mouse.down();
+    await page.mouse.move(first.x+first.width/2+15,first.y+first.height/2+10,{steps:4});
+    await page.mouse.up();
+    await page.locator('#compositeSave').click();
+    const result=await page.evaluate(async()=>{
+      const item=state.items.at(-1);
+      const cards=[...document.querySelectorAll('#printRoot .sheet-card')].filter(c=>c.querySelector('.composite-parts'));
+      const preview=[...document.querySelectorAll('#preview .sheet-card')].filter(c=>c.querySelector('.composite-parts'));
+      const pdf=await buildPdfFile();
+      const png=await buildPngFile();
+      selectedSheetItemId=item.id;
+      updateSheetCopies(2);
+      const doubled=[...document.querySelectorAll('#printRoot .sheet-card')].filter(c=>c.querySelector('.composite-parts'));
+      const doubledCount=doubled.length;
+      const doubledParts=doubled.map(c=>c.querySelectorAll('.composite-part').length);
+      updateSheetCopies(1);
+      return {parts:item.compositeParts.length,caption:item.caption,oneCard:cards.length===1,
+        preview:preview.length,allParts:cards[0]?.querySelectorAll('.composite-part').length,
+        modified:item.compositeParts.some(p=>p.scale===1.5),
+        moved:item.compositeParts[0].x>28 && item.compositeParts[0].y>36,
+        doubledCount,doubledParts,pdf:pdf.type,png:png.type,
+        hasCaption:cards[0]?.querySelector('.cap-text')?.textContent};
+    });
+    assert.equal(result.parts,3);
+    assert.equal(result.caption,'ФИЗКУЛЬТУРА');
+    assert.equal(result.oneCard,true);
+    assert.equal(result.preview,1);
+    assert.equal(result.allParts,3);
+    assert.equal(result.modified,true);
+    assert.equal(result.moved,true);
+    assert.equal(result.doubledCount,2);
+    assert.deepEqual(result.doubledParts,[3,3]);
+    assert.equal(result.pdf,'application/pdf');
+    assert.equal(result.png,'image/png');
+    assert.equal(result.hasCaption,'ФИЗКУЛЬТУРА');
+  });
+  await test('Large 7x7 and 10x10 cm cards use large readable typography',async()=>{
+    const result=await page.evaluate(()=>{
+      const previous=state.sizeMode,values=[];
+      for(const size of ['70','100']) {
+        state.sizeMode=size;renderOutput();
+        const plan=layoutPlan(),font=captionLayout(plan).font;
+        const c=document.querySelector('#printRoot .sheet-card .cap');
+        values.push({size,font,DOMfont:c?getComputedStyle(c).fontSize:''});
+      }
+      state.sizeMode=previous;renderOutput();
+      return values;
+    });
+    assert.ok(result[0].font>=7,JSON.stringify(result));
+    assert.ok(result[1].font>=8.4,JSON.stringify(result));
+    assert.ok(result[1].font>result[0].font,JSON.stringify(result));
   });
   await page.close();
 } finally {
