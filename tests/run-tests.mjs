@@ -37,7 +37,7 @@ const state = { paper:'a4', orient:'portrait',sizeMode:'50',wCm:5,hCm:5,margin:1
   mode:'cards',items:[] };
 const ctx = createContext({ state, console });
 for (const name of ['normalizeCopies','pageMm','cardMm','borderWidth','cmLabel','layoutPlan',
-  'slots','splitPages','captionShown','cropViewport','cropPanBounds','boundedItemCrop']) {
+  'slots','splitPages','captionShown','captionLayout','cropViewport','cropPanBounds','boundedItemCrop']) {
   new Script(extract(name)).runInContext(ctx);
 }
 const call = (name,...args) => ctx[name](...args);
@@ -64,6 +64,14 @@ test('Page split respects copies', () => {
   assert.equal(call('slots').length,30);
   assert.equal(call('splitPages',call('layoutPlan')).length,2);
   state.items=[];
+});
+test('Caption typography grows with card size', () => {
+  const sizes = [30, 50, 100].map(size => call('captionLayout',{card:{h:size}}));
+  assert.ok(sizes[0].font < sizes[1].font);
+  assert.ok(sizes[1].font < sizes[2].font);
+  assert.equal(sizes[0].maxLines,1);
+  assert.equal(sizes[2].maxLines,2);
+  assert.ok(sizes.every(layout => layout.bottom < 1));
 });
 test('Crop viewport reserves border and caption', () => {
   const p=call('layoutPlan');
