@@ -950,11 +950,25 @@ function cardPosition(item,index,pageItems,plan) {
 function captionShown(item) {
   return state.showLabels && !!item.caption.trim();
 }
+// A copy can override its caption; copies that still have the source's old
+// caption must follow subsequent source edits rather than stay stuck at blank.
+function updateSourceCaption(item, text) {
+  const previous = item.caption;
+  if (item.copyOverrides) {
+    Object.values(item.copyOverrides).forEach(override => {
+      if (Object.prototype.hasOwnProperty.call(override, 'caption') &&
+          override.caption === previous) delete override.caption;
+    });
+  }
+  item.caption = text;
+}
 function structureKey(plan) {
   const ids = state.items.map(item => item.id + 'x' + normalizeCopies(item.copies) +
     (item.crop ? ':crop' + [item.crop.zoom, item.crop.x, item.crop.y].join(',') : '') +
     ':copies' + JSON.stringify(item.copyOverrides || {})).join(',');
-  const caps = state.items.map(item => captionShown(item) ? '1' : '0').join('');
+  // Caption text is part of the rendered card and accessibility label.
+  // Include its value, not just whether a caption exists, in the render key.
+  const caps = state.items.map(item => item.caption).join('\u0001');
   return [
     state.mode, plan.page.w, plan.page.h, plan.card.w, plan.card.h, plan.margin, plan.gap,
     state.mode === 'matching' ? state.items.map(item=>item.id+':'+(item.side||'none')).join(',') : '',
@@ -1579,13 +1593,16 @@ $('cropApply').addEventListener('click', () => {
       const source = findItem(editingCopy.sourceId);
       if (source) {
         if (!source.copyOverrides) source.copyOverrides = {};
-        source.copyOverrides[editingCopy.copyIndex] = {
-          crop:{...cropDraft}, caption:$('cropCaption').value
-        };
+        const override = {crop:{...cropDraft}};
+        // Keep inherited captions linked to the original image. Only a
+        // genuinely different caption should become specific to this copy.
+        if ($('cropCaption').value !== source.caption)
+          override.caption = $('cropCaption').value;
+        source.copyOverrides[editingCopy.copyIndex] = override;
       }
     } else {
       cropItem.crop = {...cropDraft};
-      cropItem.caption = $('cropCaption').value;
+      updateSourceCaption(cropItem, $('cropCaption').value);
     }
     if ($('cropCaption').value.trim() && !state.showLabels) {
       state.showLabels = true; $('showLabels').checked = true;
@@ -2505,7 +2522,7 @@ $('gallery').addEventListener('input', event => {
     renderOutput();
   }
   if (event.target.classList.contains('cap-input')) {
-    item.caption = event.target.value;
+    updateSourceCaption(item, event.target.value);
     if (item.caption.trim() && !state.showLabels) { state.showLabels = true; $('showLabels').checked = true; }
     renderOutput();
   }
