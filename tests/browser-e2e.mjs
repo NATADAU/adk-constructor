@@ -866,6 +866,60 @@ try {
     });
     assert.deepEqual(result,{preview:'ГРУША',print:'ГРУША',spans:1});
   });
+  await test('Composite card can group, move and scale pictures in one printable square', async () => {
+    await page.locator('#createComposite').click();
+    const imageBuffer=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0c8AAAAASUVORK5CYII=','base64');
+    await page.locator('#compositeFiles').setInputFiles([
+      {name:'ball.png',mimeType:'image/png',buffer:imageBuffer},
+      {name:'rope.png',mimeType:'image/png',buffer:imageBuffer},
+      {name:'hoop.png',mimeType:'image/png',buffer:imageBuffer}
+    ]);
+    assert.equal(await page.locator('#compositeStage .composite-part').count(),3);
+    await page.locator('#compositeCaption').fill('ФИЗКУЛЬТУРА');
+    await page.locator('#compositeScale').fill('1.5');
+    const first=await page.locator('#compositeStage .composite-part').first().boundingBox();
+    await page.mouse.move(first.x+first.width/2,first.y+first.height/2);
+    await page.mouse.down();
+    await page.mouse.move(first.x+first.width/2+15,first.y+first.height/2+10,{steps:4});
+    await page.mouse.up();
+    await page.locator('#compositeSave').click();
+    const result=await page.evaluate(async()=>{
+      const item=state.items.at(-1);
+      const cards=[...document.querySelectorAll('#printRoot .sheet-card')].filter(c=>c.querySelector('.composite-parts'));
+      const preview=[...document.querySelectorAll('#preview .sheet-card')].filter(c=>c.querySelector('.composite-parts'));
+      const pdf=await buildPdfFile();
+      const png=await buildPngFile();
+      return {parts:item.compositeParts.length,caption:item.caption,oneCard:cards.length===1,
+        preview:preview.length,allParts:cards[0]?.querySelectorAll('.composite-part').length,
+        modified:item.compositeParts.some(p=>p.scale===1.5),pdf:pdf.type,png:png.type,
+        hasCaption:cards[0]?.querySelector('.cap-text')?.textContent};
+    });
+    assert.equal(result.parts,3);
+    assert.equal(result.caption,'ФИЗКУЛЬТУРА');
+    assert.equal(result.oneCard,true);
+    assert.equal(result.preview,1);
+    assert.equal(result.allParts,3);
+    assert.equal(result.modified,true);
+    assert.equal(result.pdf,'application/pdf');
+    assert.equal(result.png,'image/png');
+    assert.equal(result.hasCaption,'ФИЗКУЛЬТУРА');
+  });
+  await test('Large 7x7 and 10x10 cm cards use large readable typography',async()=>{
+    const result=await page.evaluate(()=>{
+      const previous=state.sizeMode,values=[];
+      for(const size of ['70','100']) {
+        state.sizeMode=size;renderOutput();
+        const plan=layoutPlan(),font=captionLayout(plan).font;
+        const c=document.querySelector('#printRoot .sheet-card .cap');
+        values.push({size,font,DOMfont:c?getComputedStyle(c).fontSize:''});
+      }
+      state.sizeMode=previous;renderOutput();
+      return values;
+    });
+    assert.ok(result[0].font>=5.5,JSON.stringify(result));
+    assert.ok(result[1].font>=6.5,JSON.stringify(result));
+    assert.ok(result[1].font>result[0].font,JSON.stringify(result));
+  });
   await page.close();
 } finally {
   await browser.close();
