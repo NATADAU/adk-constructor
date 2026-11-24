@@ -1558,6 +1558,203 @@ function tileElement(item) {
   tile.append(frame, label, placement, captionWarning, actions);
   return tile;
 }
+// A composite card owns several image URLs, but remains one printable card.
+// Coordinates are percentages of the image area (excluding the shared caption).
+let compositeDraft = null;
+let compositeAddedUrls = new Set();
+let compositeSelected = -1;
+let compositeReturnFocus = null;
+function openCompositeEditor(item = null) {
+  if (compositeDraft) return;
+  compositeReturnFocus = document.activeElement;
+  compositeDraft = {
+    source:item,
+    parts:item ? item.compositeParts.map(p => ({...p})) : [],
+    caption:item ? item.caption : ''
+  };
+  compositeAddedUrls = new Set();
+  compositeSelected = compositeDraft.parts.length ? 0 : -1;
+  $('compositeTitle').textContent = item ? 'Редактирование составной карточки' : 'Новая составная карточка';
+  $('compositeCaption').value = compositeDraft.caption;
+  $('compositeDialog').hidden = false;
+  document.body.style.overflow = 'hidden';
+  renderCompositeEditor();
+  $('compositeAdd').focus();
+}
+function renderCompositeEditor() {
+  if (!compositeDraft) return;
+  const stage = $('compositeStage');
+  const plan = layoutPlan();
+  const viewport = cropViewport(plan, true);
+  stage.style.aspectRatio = viewport.w + ' / ' + viewport.h;
+  stage.replaceChildren();
+  compositeDraft.parts.forEach((part,index) => {
+    const img = document.createElement('img');
+    img.className = 'composite-part' + (index === compositeSelected ? ' is-selected' : '');
+    img.src = part.url;
+    img.alt = 'Картинка ' + (index + 1);
+    img.draggable = false;
+    img.tabIndex = 0;
+    img.dataset.index = String(index);
+    img.style.cssText = compositePartStyle(part);
+    img.style.pointerEvents = 'auto';
+    stage.append(img);
+  });
+  if (!compositeDraft.parts.length) {
+    const note=document.createElement('p');
+    note.className='empty';
+    note.textContent='Нажмите «Добавить картинки» и выберите мяч, скакалку, обруч или другие изображения.';
+    stage.append(note);
+  }
+  const selected=compositeDraft.parts[compositeSelected];
+  $('compositeScale').disabled = !selected;
+  $('compositeRemove').disabled = !selected;
+  $('compositeSave').disabled = !compositeDraft.parts.length;
+  $('compositeScale').value = selected ? String(selected.scale) : '1';
+  $('compositeScaleText').textContent = selected ? Math.round(selected.scale*100) + '%' : '—';
+  $('compositeStatus').textContent = compositeDraft.parts.length +
+    ' изображений в карточке. Выберите картинку для перемещения и изменения размера.';
+}
+function closeCompositeEditor(save) {
+  if (!compositeDraft) return;
+  const draft = compositeDraft;
+  if (save) {
+    if (!draft.parts.length) return;
+    if (draft.source) {
+      const previous = new Set(draft.source.compositeParts.map(p=>p.url));
+      const remaining = new Set(draft.parts.map(p=>p.url));
+      for (const url of previous) if (!remaining.has(url)) {
+        URL.revokeObjectURL(url);clearExportBitmapCache(url);
+      }
+      draft.source.compositeParts = draft.parts;
+      draft.source.url = draft.parts[0].url;
+      updateSourceCaption(draft.source,$('compositeCaption').value);
+    } else {
+      state.items.push({
+        id:String(++seq),url:draft.parts[0].url,caption:$('compositeCaption').value,
+        copies:1,compositeParts:draft.parts
+      });
+    }
+    if ($('compositeCaption').value.trim() && !state.showLabels) {
+      state.showLabels=true;$('showLabels').checked=true;
+    }
+  } else {
+    for (const url of compositeAddedUrls) {
+      URL.revokeObjectURL(url);clearExportBitmapCache(url);
+    }
+  }
+  compositeDraft = null;
+  compositeAddedUrls.clear();
+  compositeSelected = -1;
+  $('compositeFiles').value = '';
+  $('compositeDialog').hidden = true;
+  document.body.style.overflow = '';
+  if (save) {
+    renderGallery();renderOutput();
+    state.pane='sheet';syncPane();
+  }
+  if (compositeReturnFocus && compositeReturnFocus.isConnected) compositeReturnFocus.focus();
+  compositeReturnFocus=null;
+}
+$('createComposite').addEventListener('click',()=>openCompositeEditor());
+$('compositeCancel').addEventListener('click',()=>closeCompositeEditor(false));
+$('compositeSave').addEventListener('click',()=>closeCompositeEditor(true));
+$('compositeAdd').addEventListener('click',()=>$('compositeFiles').click());
+$('compositeFiles').addEventListener('change',async event=>{
+  if (!compositeDraft) return;
+  $('compositeAdd').disabled=true;
+  try {
+    let rejected=0;
+    for (const file of [...event.target.files]) {
+      if (compositeDraft.parts.length >= 8) {rejected++;continue;}
+      if (file.size > 25*1024*1024) {rejected++;continue;}
+      let type='';
+      try {type=await sniff(file);} catch (_) {}
+      if (!type) {rejected++;continue;}
+      const pixels=await declaredPixels(file,type);
+      if (pixels>MAX_IMAGE_PIXELS) {rejected++;continue;}
+      try {
+        const normalized=await normalizeUpload(file.type === type ? file : new Blob([file],{type}),type);
+        const url=URL.createObjectURL(normalized.blob);
+        compositeAddedUrls.add(url);
+        const n=compositeDraft.parts.length;
+        const positions=[[28,36],[72,36],[50,72],[25,72],[75,72],[50,35],[32,55],[68,55]];
+        const [x,y]=positions[n];
+        compositeDraft.parts.push({url,x,y,scale:1});
+        compositeSelected=n;
+      } catch (_) {rejected++;}
+    }
+    renderCompositeEditor();
+    if (rejected) $('compositeStatus').textContent += ' Пропущено файлов: ' + rejected + '. Максимум 8 картинок, PNG/JPG/WEBP до 25 МБ.';
+  } finally {
+    $('compositeFiles').value='';
+    $('compositeAdd').disabled=false;
+  }
+});
+$('compositeScale').addEventListener('input',event=>{
+  if (!compositeDraft || !compositeDraft.parts[compositeSelected]) return;
+  compositeDraft.parts[compositeSelected].scale=Number(event.target.value);
+  renderCompositeEditor();
+});
+$('compositeRemove').addEventListener('click',()=>{
+  if (!compositeDraft || compositeSelected<0) return;
+  const removed=compositeDraft.parts.splice(compositeSelected,1)[0];
+  // Newly uploaded URLs remain owned by the draft until Save or Cancel.
+  if (removed && compositeAddedUrls.has(removed.url)) {
+    URL.revokeObjectURL(removed.url);
+    compositeAddedUrls.delete(removed.url);
+    clearExportBitmapCache(removed.url);
+  }
+  compositeSelected=Math.min(compositeSelected,compositeDraft.parts.length-1);
+  renderCompositeEditor();
+});
+const compositeStage=$('compositeStage');
+let compositeDrag=null;
+compositeStage.addEventListener('pointerdown',event=>{
+  const piece=event.target.closest('.composite-part');
+  if (!piece || !compositeDraft) return;
+  event.preventDefault();
+  compositeSelected=Number(piece.dataset.index);
+  const part=compositeDraft.parts[compositeSelected];
+  if (!part) return;
+  const rect=compositeStage.getBoundingClientRect();
+  compositeDrag={id:event.pointerId,index:compositeSelected,startX:event.clientX,startY:event.clientY,
+    x:part.x,y:part.y,width:rect.width,height:rect.height};
+  compositeStage.setPointerCapture(event.pointerId);
+  renderCompositeEditor();
+});
+compositeStage.addEventListener('pointermove',event=>{
+  if (!compositeDraft || !compositeDrag || compositeDrag.id!==event.pointerId) return;
+  const part=compositeDraft.parts[compositeDrag.index];
+  if (!part) return;
+  part.x=Math.max(0,Math.min(100,compositeDrag.x+(event.clientX-compositeDrag.startX)/compositeDrag.width*100));
+  part.y=Math.max(0,Math.min(100,compositeDrag.y+(event.clientY-compositeDrag.startY)/compositeDrag.height*100));
+  const node=compositeStage.querySelectorAll('.composite-part')[compositeDrag.index];
+  if (node) node.style.cssText=compositePartStyle(part);
+});
+const endCompositeDrag=()=>{compositeDrag=null;};
+compositeStage.addEventListener('pointerup',endCompositeDrag);
+compositeStage.addEventListener('pointercancel',endCompositeDrag);
+compositeStage.addEventListener('lostpointercapture',endCompositeDrag);
+compositeStage.addEventListener('keydown',event=>{
+  if (!compositeDraft || !event.target.classList.contains('composite-part')) return;
+  const index=Number(event.target.dataset.index),part=compositeDraft.parts[index];
+  if (!part || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+  event.preventDefault();
+  const step=event.shiftKey?5:1;
+  if (event.key==='ArrowLeft')part.x=Math.max(0,part.x-step);
+  if (event.key==='ArrowRight')part.x=Math.min(100,part.x+step);
+  if (event.key==='ArrowUp')part.y=Math.max(0,part.y-step);
+  if (event.key==='ArrowDown')part.y=Math.min(100,part.y+step);
+  event.target.style.cssText=compositePartStyle(part);
+});
+$('compositeDialog').addEventListener('click',event=>{
+  if (event.target===$('compositeDialog')) closeCompositeEditor(false);
+});
+document.addEventListener('keydown',event=>{
+  if (event.key==='Escape' && compositeDraft) {event.preventDefault();closeCompositeEditor(false);}
+});
+
 let cropItem = null;
 let cropDraft = { zoom: 1, x: 0, y: 0 };
 let editingCopy = null;
