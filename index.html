@@ -414,6 +414,19 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .tile-actions button { flex: 1 1 140px; min-height: 44px; border: 1px solid var(--clp-line-strong); background: white; border-radius: 10px; padding: 8px 10px; font-size: 14px; font-weight: 600; }
 .tile-actions .crop-btn { color: var(--clp-teal-dark); }
 .tile-actions .remove { color: #ac2454; }
+.composite-create { min-height: 44px; border: 1px solid var(--clp-teal); color: var(--clp-teal-dark); background: #fff; border-radius: 9px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+.composite-parts { position: absolute; inset: 0; background: white; overflow: hidden; }
+.composite-part { position: absolute; display: block; width: 32%; height: 32%; object-fit: contain; transform-origin: center; pointer-events: none; }
+.composite-editor-stage { position: relative; width: min(100%, 380px); aspect-ratio: 1; background: #fff; border: 2px solid #019BAB; overflow: hidden; touch-action: none; user-select: none; margin: 0 auto; }
+.composite-editor-stage .composite-part { pointer-events: auto; cursor: grab; }
+.composite-editor-stage .composite-part.is-selected { outline: 2px dashed #c22662; outline-offset: 1px; cursor: grab; }
+.composite-editor-stage .composite-part:focus-visible { outline: 3px solid #006d79; }
+.composite-editor-hint { font-size: 13px; color: #345; margin: 0; }
+.composite-editor-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.composite-editor-controls button { min-height: 44px; }
+.composite-editor-controls label { flex: 1 1 180px; }
+.composite-editor-controls input[type="range"] { width: 100%; }
+@media print { .composite-dialog { display: none !important; } }
 .zoom-seg {
   display: inline-flex;
   border: 1px solid var(--clp-line);
@@ -738,6 +751,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
           <h2>Изображения</h2>
           <span id="countLabel" class="pill">0</span>
         </div>
+        <button type="button" class="composite-create" id="createComposite">+ Составная карточка</button>
         <div id="gallery" class="gallery"></div>
       </section>
     </div>
@@ -809,6 +823,27 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   <p style="margin:0;font-size:13px">Уменьшайте изображение до 30% или увеличивайте до 300%. При уменьшении вокруг картинки остаётся свободное место. Исходный файл не изменится.</p>
   <div class="crop-actions"><button type="button" id="cropReset">Сбросить</button><button type="button" id="cropCancel">Отмена</button><button type="button" id="cropApply" class="crop-apply">Применить</button></div>
  </div>
+</div>
+<div class="crop-dialog composite-dialog" id="compositeDialog" hidden role="dialog" aria-modal="true" aria-labelledby="compositeTitle">
+  <div class="crop-box">
+    <h2 id="compositeTitle">Составная карточка</h2>
+    <p class="composite-editor-hint">Несколько картинок на одном фоне. Выберите картинку, перетащите её пальцем или мышью, настройте размер. Общая подпись внизу.</p>
+    <div id="compositeStage" class="composite-editor-stage" tabindex="0" aria-label="Расположение картинок внутри карточки"></div>
+    <label class="tile-label">Общая подпись<input id="compositeCaption" class="control" type="text" maxlength="80" autocomplete="off" placeholder="Например, ФИЗКУЛЬТУРА"></label>
+    <input type="file" id="compositeFiles" accept="image/png,image/jpeg,image/webp" multiple hidden>
+    <div class="composite-editor-controls">
+      <button id="compositeAdd" type="button" class="btn secondary">+ Добавить картинки</button>
+      <label>Размер выбранной картинки: <output id="compositeScaleText">100%</output>
+        <input id="compositeScale" type="range" min="0.4" max="2.5" step=".05" value="1">
+      </label>
+      <button id="compositeRemove" type="button" class="btn secondary">Удалить выбранную</button>
+    </div>
+    <p class="composite-editor-hint" id="compositeStatus" role="status"></p>
+    <div class="crop-actions">
+      <button id="compositeCancel" type="button">Отмена</button>
+      <button id="compositeSave" type="button" class="crop-apply">Сохранить карточку</button>
+    </div>
+  </div>
 </div>
 <script>
 'use strict';
