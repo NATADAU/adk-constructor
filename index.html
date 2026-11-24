@@ -1712,7 +1712,7 @@ $('compositeFront').addEventListener('click',()=>{
 function compositePlacement(parts,requested=null) {
   // Spread new images across distinct cells. Respect the requested drop point
   // whenever it does not overlap an existing image too strongly.
-  const candidates=[[25,26],[75,26],[50,73],[25,74],[75,74],[50,27],[25,50],[75,50]];
+  const candidates=[[17,17],[50,17],[83,17],[17,50],[83,50],[17,83],[50,83],[83,83]];
   const freeSpace=point=>parts.reduce((closest,part)=>{
     const dx=point[0]-part.x,dy=point[1]-part.y;
     return Math.min(closest,Math.hypot(dx,dy));
