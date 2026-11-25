@@ -1133,6 +1133,21 @@ try {
     assert.equal(result.pdf,'application/pdf');
     assert.equal(result.png,'image/png');
   });
+  await test('Cyrillic letter sample changes with chosen font',async()=>{
+    const result=await page.evaluate(()=>{
+      const previous=state.captionFont;
+      try {
+        state.captionFont='candara';syncCaptionSettings();
+        const first=$('captionFontSample').style.fontFamily;
+        const letters=$('captionFontSample').textContent;
+        state.captionFont='cambria';syncCaptionSettings();
+        return {first,second:$('captionFontSample').style.fontFamily,letters};
+      } finally {state.captionFont=previous;syncCaptionSettings();}
+    });
+    assert.ok(result.first.includes('Candara'),JSON.stringify(result));
+    assert.ok(result.second.includes('Cambria'),JSON.stringify(result));
+    assert.ok(result.letters.includes('ЛАМПА')&&result.letters.includes('ПИЛА'),JSON.stringify(result));
+  });
   await test('Tiny card reduces oversize point size without clipping into image',async()=>{
     const result=await page.evaluate(()=>{
       const saved={sizeMode:state.sizeMode,captionManual:state.captionManual,captionPt:state.captionPt};
