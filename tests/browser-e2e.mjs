@@ -1102,6 +1102,42 @@ try {
     assert.ok(result.message.includes('Сохраните картинку'),JSON.stringify(result));
     await page.locator('#compositeCancel').click();
   });
+  await test('New copies inherit edited sheet card while old copies remain independent',async()=>{
+    const results=await page.evaluate(()=>{
+      const saved=state.items;
+      try {
+        state.items=[{...saved[0],id:'copy-source-check',caption:'ОВЕЧКА',copies:1,
+          crop:null,copyOverrides:{}}];
+        const item=state.items[0];
+        openCrop(item,0);
+        cropDraft.zoom=1.65;cropDraft.x=0;cropDraft.y=0;
+        $('cropCaption').value='БОЛЬШАЯ ОВЕЧКА';
+        $('cropApply').click();
+        setItemCopies(item,3);
+        const three=slots().map(it=>({zoom:it.crop?.zoom,caption:it.caption}));
+        // Change only the second existing copy.
+        openCrop(item,1);
+        cropDraft.zoom=.65;cropDraft.x=0;cropDraft.y=0;
+        $('cropCaption').value='МАЛЕНЬКАЯ ОВЕЧКА';
+        $('cropApply').click();
+        const old=slots().map(it=>({zoom:it.crop?.zoom,caption:it.caption}));
+        setItemCopies(item,4);
+        const next=slots().map(it=>({zoom:it.crop?.zoom,caption:it.caption}));
+        return {three,old,next,sourceCaption:item.caption,sourceCrop:item.crop};
+      } finally { state.items=saved;renderGallery();renderOutput(); }
+    });
+    assert.deepEqual(results.three,Array.from({length:3},()=>({zoom:1.65,caption:'БОЛЬШАЯ ОВЕЧКА'})));
+    assert.deepEqual(results.old,[
+      {zoom:1.65,caption:'БОЛЬШАЯ ОВЕЧКА'},
+      {zoom:.65,caption:'МАЛЕНЬКАЯ ОВЕЧКА'},
+      {zoom:1.65,caption:'БОЛЬШАЯ ОВЕЧКА'}
+    ]);
+    assert.deepEqual(results.next,[
+      ...results.old,{zoom:.65,caption:'МАЛЕНЬКАЯ ОВЕЧКА'}
+    ]);
+    assert.equal(results.sourceCaption,'ОВЕЧКА');
+    assert.equal(results.sourceCrop,null);
+  });
   await test('Mobile settings show a sticky real card that changes with font and size',async()=>{
     await page.setViewportSize({width:375,height:812});
     await page.locator('.mobile-nav [data-pane="settings"]').click();
