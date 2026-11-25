@@ -1102,6 +1102,42 @@ try {
     assert.ok(result.message.includes('Сохраните картинку'),JSON.stringify(result));
     await page.locator('#compositeCancel').click();
   });
+  await test('Mobile settings show a sticky real card that changes with font and size',async()=>{
+    await page.setViewportSize({width:375,height:812});
+    await page.locator('.mobile-nav [data-pane="settings"]').click();
+    const result=await page.evaluate(()=>{
+      const old={font:state.captionFont,manual:state.captionManual,pt:state.captionPt};
+      try {
+        const stage=$('mobilePreviewStage');
+        state.captionFont='cambria';state.captionManual=true;state.captionPt=30;renderOutput();
+        const first=stage.querySelector('.sheet-card');
+        const font1=first?.querySelector('.cap')?.style.fontFamily;
+        const size1=parseFloat(first?.querySelector('.cap')?.style.fontSize);
+        state.captionPt=64;renderOutput();
+        const second=stage.querySelector('.sheet-card');
+        const size2=parseFloat(second?.querySelector('.cap')?.style.fontSize);
+        const img=second?.querySelector('img');
+        const previewBounds=$('mobileCaptionPreview').getBoundingClientRect();
+        const settings=$('settings').getBoundingClientRect();
+        const visible=getComputedStyle($('mobileCaptionPreview')).display!=='none';
+        return {font1,size1,size2,visible,hasImage:!!img,
+          screenWidth:document.documentElement.scrollWidth,previewTop:previewBounds.top,
+          previewWidth:previewBounds.width,settingsWidth:settings.width,
+          realCaption:second?.querySelector('.cap-text')?.textContent};
+      } finally {
+        state.captionFont=old.font;state.captionManual=old.manual;state.captionPt=old.pt;
+        renderOutput();
+      }
+    });
+    assert.ok(result.visible,JSON.stringify(result));
+    assert.ok(result.hasImage,JSON.stringify(result));
+    assert.ok(result.font1?.includes('Cambria'),JSON.stringify(result));
+    assert.ok(result.size2>result.size1,JSON.stringify(result));
+    assert.ok(result.previewWidth<=375,JSON.stringify(result));
+    assert.ok(result.screenWidth<=375,JSON.stringify(result));
+    assert.ok(result.realCaption?.length>0,JSON.stringify(result));
+    await page.locator('.mobile-nav [data-pane="sheet"]').click();
+  });
   await test('Manual large Cyrillic labels resize image area and work for ordinary and composite cards',async()=>{
     const result=await page.evaluate(async()=>{
       const saved={captionFont:state.captionFont,captionManual:state.captionManual,captionPt:state.captionPt,
