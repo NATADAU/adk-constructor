@@ -1356,6 +1356,7 @@ function syncPrimaryActions() {
 function renderOutput() {
   queueSharePdf();
   syncSheetQuantity();
+  syncCaptionSettings();
   const plan = layoutPlan();
   const key = structureKey(plan);
   updateCaptionWarnings(plan);
