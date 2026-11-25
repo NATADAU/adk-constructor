@@ -1579,12 +1579,32 @@ function syncSheetQuantity() {
   $('sheetInc').disabled = active.copies >= 30;
 }
 function setItemCopies(item, count) {
-  item.copies = normalizeCopies(count);
-  if (item.copyOverrides) {
-    for (const key of Object.keys(item.copyOverrides)) {
-      if (Number(key) >= item.copies) delete item.copyOverrides[key];
+  const previous=normalizeCopies(item.copies);
+  const next=normalizeCopies(count);
+  // When adding copies, duplicate the latest card edited on the sheet
+  // (including its crop and custom caption), rather than the unedited source.
+  if (next > previous && Number.isInteger(item.copyTemplateIndex)
+      && item.copyTemplateIndex >= 0 && item.copyTemplateIndex < previous) {
+    const template=item.copyOverrides?.[item.copyTemplateIndex];
+    if (template) {
+      if (!item.copyOverrides) item.copyOverrides={};
+      for (let i=previous;i<next;i++) {
+        item.copyOverrides[i]={
+          ...(template.crop ? {crop:{...template.crop}} : {}),
+          ...(Object.prototype.hasOwnProperty.call(template,'caption')
+            ? {caption:template.caption} : {})
+        };
+      }
     }
   }
+  item.copies=next;
+  if (item.copyOverrides) {
+    for (const key of Object.keys(item.copyOverrides)) {
+      if (Number(key) >= next) delete item.copyOverrides[key];
+    }
+  }
+  if (Number.isInteger(item.copyTemplateIndex) && item.copyTemplateIndex >= next)
+    delete item.copyTemplateIndex;
 }
 function updateSheetCopies(value) {
   const item = selectedSheetItem();
@@ -2196,10 +2216,13 @@ $('cropApply').addEventListener('click', () => {
         if ($('cropCaption').value !== source.caption)
           override.caption = $('cropCaption').value;
         source.copyOverrides[editingCopy.copyIndex] = override;
+        source.copyTemplateIndex=editingCopy.copyIndex;
       }
     } else {
       cropItem.crop = {...cropDraft};
       updateSourceCaption(cropItem, $('cropCaption').value);
+      // A fresh edit to the source becomes the template for subsequent copies.
+      delete cropItem.copyTemplateIndex;
     }
     if ($('cropCaption').value.trim() && !state.showLabels) {
       state.showLabels = true; $('showLabels').checked = true;
