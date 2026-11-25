@@ -1105,8 +1105,10 @@ try {
   await test('Manual large Cyrillic labels resize image area and work for ordinary and composite cards',async()=>{
     const result=await page.evaluate(async()=>{
       const saved={captionFont:state.captionFont,captionManual:state.captionManual,captionPt:state.captionPt,
-        sizeMode:state.sizeMode,showLabels:state.showLabels};
+        sizeMode:state.sizeMode,showLabels:state.showLabels,items:state.items};
       try {
+        const composite=state.items.find(item=>item.compositeParts?.length);
+        state.items=[{...composite,caption:'КОТ',copies:1,copyOverrides:{}}];
         state.sizeMode='70';state.showLabels=true;state.captionFont='candara';state.captionManual=true;state.captionPt=72;
         syncCaptionSettings();renderOutput();
         const plan=layoutPlan();
@@ -1132,6 +1134,37 @@ try {
     assert.ok(result.cambria?.includes('Cambria'),JSON.stringify(result));
     assert.equal(result.pdf,'application/pdf');
     assert.equal(result.png,'image/png');
+  });
+  await test('Long Cyrillic word is detected and export protected until card width or font is adjusted',async()=>{
+    const result=await page.evaluate(async()=>{
+      const saved={items:state.items,captionManual:state.captionManual,captionPt:state.captionPt,
+        sizeMode:state.sizeMode,wCm:state.wCm,hCm:state.hCm,showLabels:state.showLabels,captionFont:state.captionFont};
+      try {
+        const base=state.items[0];
+        state.items=[{...base,id:'long-word-check',caption:'ЭЛЕКТРОВОЗ',copies:1,copyOverrides:{}}];
+        state.sizeMode='50';state.captionManual=true;state.captionPt=72;
+        state.showLabels=true;state.captionFont='arial';renderOutput();
+        const overflow=captionOverflows(state.items[0],layoutPlan());
+        const shown=!$('captionFitWarning').hidden && !$('previewCaptionWarning').hidden;
+        const disabled=$('savePdf').disabled && $('print').disabled && $('savePng').disabled;
+        let rejected=false;
+        try { await buildPdfFile(); } catch(error){rejected=error.message.includes('ЭЛЕКТРОВОЗ');}
+        state.sizeMode='custom';state.wCm=18;state.hCm=7;state.captionPt=24;renderOutput();
+        const fixed=!captionOverflows(state.items[0],layoutPlan());
+        const enabled=!$('savePdf').disabled && !$('print').disabled;
+        const pdf=await buildPdfFile();
+        return {overflow,shown,disabled,rejected,fixed,enabled,pdf:pdf.type,
+          hidden:$('captionFitWarning').hidden};
+      } finally {Object.assign(state,saved);syncCaptionSettings();renderOutput();}
+    });
+    assert.equal(result.overflow,true,JSON.stringify(result));
+    assert.equal(result.shown,true,JSON.stringify(result));
+    assert.equal(result.disabled,true,JSON.stringify(result));
+    assert.equal(result.rejected,true,JSON.stringify(result));
+    assert.equal(result.fixed,true,JSON.stringify(result));
+    assert.equal(result.enabled,true,JSON.stringify(result));
+    assert.equal(result.hidden,true,JSON.stringify(result));
+    assert.equal(result.pdf,'application/pdf',JSON.stringify(result));
   });
   await test('Cyrillic letter sample changes with chosen font',async()=>{
     const result=await page.evaluate(()=>{
