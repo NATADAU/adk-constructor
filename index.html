@@ -510,6 +510,11 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
   object-fit: contain;
   object-position: center;
 }
+.caption-settings { display: grid; gap: 8px; padding: 10px 0; }
+.caption-settings > label { display: grid; gap: 4px; }
+.caption-settings > label.check { display: flex; }
+.caption-settings input[type="range"] { width: 100%; }
+.caption-font-sample { display: block; font-size: 23px; font-weight: 700; line-height: 1.35; color: #263238; background: white; border: 1px solid #d4dddd; border-radius: 8px; padding: 10px; overflow-wrap: anywhere; }
 .cap {
   position: relative;
   z-index: 2;
@@ -718,6 +723,24 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
               </label>
             </div>
             <label class="check"><input id="showLabels" type="checkbox" checked> Показывать подписи</label>
+            <div class="caption-settings" id="captionSettings">
+              <label>Шрифт подписи
+                <select id="captionFont" class="control">
+                  <option value="arial">Arial (прежний)</option>
+                  <option value="candara">Candara</option>
+                  <option value="cambria">Cambria</option>
+                  <option value="georgia">Georgia</option>
+                </select>
+              </label>
+              <span id="captionFontSample" class="caption-font-sample" aria-label="Образец букв выбранного шрифта">ЛАМПА · ПИЛА · ЛОПАТА</span>
+              <label class="check"><input id="captionManual" type="checkbox"> Настроить размер шрифта вручную</label>
+              <label id="captionSizeRow">Размер шрифта: <output id="captionSizeText">40 пт</output>
+                <input id="captionSize" type="range" min="12" max="72" value="40" step="2" disabled>
+              </label>
+              <p class="size-now" id="captionSizeNotice">Автоматический размер зависит от размера карточки.</p>
+              <p class="caption-warning" id="captionFitWarning" role="alert" hidden></p>
+              <p class="size-now">При крупном шрифте место под подпись увеличивается, а изображение уменьшается. На другом устройстве Candara и Cambria могут быть заменены доступным шрифтом.</p>
+            </div>
             <div class="cut-row">
               <label class="check inline"><input id="cutLines" type="checkbox"> Пунктирные линии для разрезания</label>
               <p class="size-now">Единая сетка без промежутков: одна линия между соседними карточками, без пустых ячеек.</p>
@@ -783,6 +806,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
         <p class="sheet-quantity-status" id="sheetQuantityStatus" role="status" aria-live="polite"></p>
       </div>
       <p class="sheet-edit-hint" id="sheetEditHint" hidden>Нажмите на нужную карточку на листе, чтобы изменить только её размер, положение или подпись.</p>
+      <p class="caption-warning" id="previewCaptionWarning" role="alert" hidden></p>
       <div class="preview-toolbar">
         <div class="print-actions">
           <button type="button" class="btn secondary" id="savePdf" disabled>Скачать PDF</button>
@@ -851,6 +875,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
       <button id="compositeFront" type="button" class="btn secondary">На передний план</button>
       <button id="compositeRemove" type="button" class="btn secondary">Удалить выбранную</button>
     </div>
+    <p class="caption-warning" id="compositeCaptionWarning" hidden>Подпись не помещается. Увеличьте ширину карточки через «Свой» или уменьшите шрифт.</p>
     <p class="composite-editor-hint" id="compositeStatus" role="status"></p>
     <div class="crop-actions">
       <button id="compositeCancel" type="button">Отмена</button>
@@ -870,6 +895,9 @@ const state = {
   border: 'normal',
   borderColor: '#019BAB',
   showLabels: true,
+  captionFont: 'arial',
+  captionManual: false,
+  captionPt: 40,
   cutLines: false,
   paper: 'a4',
   orient: 'portrait',
@@ -1019,19 +1047,40 @@ function cardPosition(item,index,pageItems,plan) {
 function captionShown(item) {
   return state.showLabels && !!item.caption.trim();
 }
-// Shared text geometry for screen, print, and raster export.
-// The font grows with card size; text sits close to the bottom edge.
+// A single font and geometry specification for live preview, print, PDF and PNG.
+// PT is a typographic point (1/72 inch); all layout measurements use millimetres.
+const CAPTION_FONTS = {
+  arial: {css:'Arial, "Segoe UI", sans-serif',canvas:'Arial, sans-serif'},
+  candara: {css:'Candara, "Trebuchet MS", sans-serif',canvas:'Candara, "Trebuchet MS", sans-serif'},
+  cambria: {css:'Cambria, Georgia, serif',canvas:'Cambria, Georgia, serif'},
+  georgia: {css:'Georgia, "Times New Roman", serif',canvas:'Georgia, serif'}
+};
+function captionFontFamily(kind = state.captionFont) {
+  return (CAPTION_FONTS[kind] || CAPTION_FONTS.arial).css;
+}
+function captionCanvasFont(kind = state.captionFont) {
+  return (CAPTION_FONTS[kind] || CAPTION_FONTS.arial).canvas;
+}
 function captionLayout(plan) {
   const h = plan.card.h;
-  const twoLines = h >= 70;
-  const height = Math.max(8.5, Math.min(24, h * (twoLines ? .26 : .23)));
-  // Large cards need genuinely readable labels: ~20 pt at 7 cm and 24 pt at 10 cm.
-  // On small cards avoid using the large-card font, which would clip most words.
-  const font = twoLines ? Math.min(8.5, 7.1 + (h - 70) * .05)
+  const twoLinesAuto = h >= 70;
+  const automaticHeight = Math.max(8.5, Math.min(24, h * (twoLinesAuto ? .26 : .23)));
+  const automaticFont = twoLinesAuto ? Math.min(8.5, 7.1 + (h - 70) * .05)
     : Math.max(4, Math.min(6.2, h * .12 + .1));
   const bottom = .45;
-  const lineHeight = font * 1.12;
-  return {height, font, bottom, lineHeight, maxLines:twoLines ? 2 : 1, twoLines};
+  if (!state.captionManual) {
+    return {height:automaticHeight,font:automaticFont,bottom,
+      lineHeight:automaticFont*1.12,maxLines:twoLinesAuto?2:1,twoLines:twoLinesAuto,
+      requestedPt:automaticFont*72/25.4,effectivePt:automaticFont*72/25.4};
+  }
+  const requestedPt=Math.max(12,Math.min(72,Number(state.captionPt)||40));
+  const requestedMm=requestedPt*25.4/72;
+  // Preserve at least 4 mm of image area on even the smallest card.
+  const font=Math.min(requestedMm,Math.max(2,(h-5)/1.4));
+  const height=Math.min(h-3.5,Math.max(automaticHeight,font*1.4));
+  const maxLines = 1; // Keep manually sized learning words on one line.
+  return {height,font,bottom,lineHeight:font*1.12,maxLines,twoLines:false,
+    requestedPt,effectivePt:font*72/25.4};
 }
 // A copy can override its caption; copies that still have the source's old
 // caption must follow subsequent source edits rather than stay stuck at blank.
@@ -1057,7 +1106,7 @@ function structureKey(plan) {
     state.mode, plan.page.w, plan.page.h, plan.card.w, plan.card.h, plan.margin, plan.gap,
     state.mode === 'matching' ? state.items.map(item=>item.id+':'+(item.side||'none')).join(',') : '',
     plan.cols, plan.rows, borderWidth(), safeColor(state.borderColor),
-    state.showLabels ? '1' : '0', state.cutLines ? '1' : '0',
+    state.showLabels ? '1' : '0',state.captionFont,state.captionManual ? state.captionPt : 'auto', state.cutLines ? '1' : '0',
     plan.error, ids, caps
   ].join('|');
 }
@@ -1104,6 +1153,7 @@ function syncFormControls() {
   $('borderColor').value = safeColor(state.borderColor);
   $('borderColor').disabled = state.border === 'none';
   $('showLabels').checked = state.showLabels;
+  syncCaptionSettings();
   $('cutLines').checked = state.cutLines;
   $('cutLines').disabled = state.mode === 'matching';
   $('cutLines').closest('.cut-row').hidden = state.mode === 'matching';
@@ -1176,6 +1226,7 @@ function buildCard(item, plan, x, y) {
     const cap = document.createElement('p');
     cap.className = 'cap ' + (metrics.twoLines ? 'two' : 'one');
     cap.style.fontSize = metrics.font + 'mm';
+    cap.style.fontFamily = captionFontFamily();
     const capText = document.createElement('span');
     capText.className = 'cap-text';
     capText.textContent = text;
@@ -1310,6 +1361,7 @@ function syncPrimaryActions() {
 function renderOutput() {
   queueSharePdf();
   syncSheetQuantity();
+  syncCaptionSettings();
   const plan = layoutPlan();
   const key = structureKey(plan);
   updateCaptionWarnings(plan);
@@ -1361,7 +1413,7 @@ function renderOutput() {
   summary.dataset.showLabels = state.showLabels ? '1' : '0';
   summary.dataset.mode = state.mode;
   summary.dataset.cuts = state.cutLines ? '1' : '0';
-  setPrintEnabled(!plan.error && total > 0);
+  setPrintEnabled(!plan.error && total > 0 && !tooLongCaptions(plan).length);
   syncPrimaryActions();
   const preview = $('preview');
   const printRoot = $('printRoot');
@@ -1647,6 +1699,7 @@ function renderCompositeEditor() {
   $('compositeScaleText').textContent = selected ? Math.round(selected.scale*100) + '%' : '—';
   $('compositeStatus').textContent = compositeDraft.parts.length +
     ' изображений в карточке. Нажмите на миниатюру, чтобы выбрать даже скрытую картинку.';
+  $('compositeCaptionWarning').hidden = !captionOverflows({caption:$('compositeCaption').value},plan,true);
 }
 function closeCompositeEditor(save) {
   if (!compositeDraft || compositeBusy) return;
@@ -1695,6 +1748,10 @@ $('compositeCancel').addEventListener('click',()=>closeCompositeEditor(false));
 $('compositeSave').addEventListener('click',()=>closeCompositeEditor(true));
 $('compositeAdd').addEventListener('click',()=>$('compositeFiles').click());
 const compositeStage=$('compositeStage');
+$('compositeCaption').addEventListener('input',()=>{
+  if (compositeDraft) $('compositeCaptionWarning').hidden =
+    !captionOverflows({caption:$('compositeCaption').value},layoutPlan(),true);
+});
 $('compositeThumbnails').addEventListener('click',event=>{
   const target=event.target.closest('.composite-thumb');
   if (!target || !compositeDraft) return;
@@ -1918,16 +1975,35 @@ const captionMeasureCanvas = document.createElement('canvas');
 function captionOverflows(item, plan, forceVisible = false) {
   if (!item.caption || !item.caption.trim() || (!forceVisible && !captionShown(item))) return false;
   const metrics = captionLayout(plan);
-  const fontMm = metrics.font;
   const width = exportPixels(plan.card.w - 2*borderWidth() - 2.8, 96);
   const ctx = captionMeasureCanvas.getContext('2d');
   if (!ctx || width <= 0) return false;
-  ctx.font = '700 ' + exportPixels(fontMm, 96) + 'px Arial, sans-serif';
-  const maxLines = metrics.maxLines;
-  const lines = wrapExportCaption(ctx,item.caption,width,maxLines);
-  return lines.join(' ') !== item.caption.trim().replace(/\s+/g,' ');
+  ctx.font = '700 ' + exportPixels(metrics.font, 96) + 'px ' + captionCanvasFont();
+  const word=item.caption.trim().replace(/\s+/g,' ');
+  if (state.captionManual) return ctx.measureText(word).width > width + .5;
+  const lines=wrapExportCaption(ctx,word,width,metrics.maxLines);
+  return lines.join(' ') !== word || lines.some(line=>ctx.measureText(line).width>width+.5);
+}
+function tooLongCaptions(plan=layoutPlan()) {
+  if (!state.captionManual || !state.showLabels || plan.error) return [];
+  return slots().filter(item=>captionOverflows(item,plan));
+}
+function captionFitMessage(items) {
+  const word=items[0].caption.trim();
+  return 'Не помещается подпись «'+word+'»'+(items.length>1?' (таких карточек: '+items.length+')':'')+
+    '. Выберите размер карточки «Свой» и увеличьте ширину или уменьшите размер шрифта. Печать и экспорт пока недоступны.';
+}
+function validateCaptionExport(plan=layoutPlan()) {
+  const items=tooLongCaptions(plan);
+  if (items.length) throw Error(captionFitMessage(items));
 }
 function updateCaptionWarnings(plan) {
+  const overflow=tooLongCaptions(plan);
+  const message=overflow.length?captionFitMessage(overflow):'';
+  for (const id of ['captionFitWarning','previewCaptionWarning']) {
+    $(id).hidden=!message;
+    $(id).textContent=message;
+  }
   document.querySelectorAll('#gallery .tile').forEach(tile => {
     const item = findItem(tile.dataset.id);
     const notice = tile.querySelector('.caption-warning');
@@ -2312,7 +2388,7 @@ function imageFilesFromClipboard(data) {
   return [...(data.files || [])].filter(file => !file.type || file.type.startsWith('image/'));
 }
 async function runPrint() {
-  if ($('print').disabled) return;
+  if ($('print').disabled || tooLongCaptions().length) return;
   const imgs = [...$('printRoot').querySelectorAll('img')];
   await Promise.all(imgs.map(img => img.decode ? img.decode().catch(() => {}) : Promise.resolve()));
   window.print();
@@ -2360,10 +2436,11 @@ function drawExportCaption(ctx, item, plan, x, y, dpi) {
   ctx.fillStyle = '#2A2A2A';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.font = '700 ' + exportPixels(fontMm, dpi) + 'px Arial, sans-serif';
+  ctx.font = '700 ' + exportPixels(fontMm, dpi) + 'px ' + captionCanvasFont();
   const lineHeight = exportPixels(metrics.lineHeight, dpi);
   const maxLines = metrics.maxLines;
-  const lines = wrapExportCaption(ctx, item.caption, width, maxLines);
+  const lines = state.captionManual ? [item.caption.trim().replace(/\s+/g,' ')] :
+    wrapExportCaption(ctx, item.caption, width, maxLines);
   const startX = exportPixels(x + plan.card.w / 2, dpi);
   const capTop = exportPixels(y + plan.card.h - bw - capH, dpi);
   const bottomY = exportPixels(y + plan.card.h - bw - metrics.bottom, dpi);
@@ -2569,6 +2646,7 @@ function bytesFromBase64(base64) {
 async function buildPdfFile() {
   const plan=layoutPlan();
   if(plan.error || !state.items.length) throw Error(plan.error || 'Сначала добавьте изображения.');
+  validateCaptionExport(plan);
   const pages=splitPages(plan), jpegs=[];
   for(const pageItems of pages) {
     const decoded=await prepareExportImages(pageItems);
@@ -2648,6 +2726,7 @@ function makeZip(files) {
 async function buildPngFile() {
   const plan=layoutPlan();
   if(plan.error || !state.items.length) throw Error(plan.error || 'Сначала добавьте изображения.');
+  validateCaptionExport(plan);
   const pages=splitPages(plan),files=[];
   for(let i=0;i<pages.length;i++){
     const decoded=await prepareExportImages(pages[i]);
@@ -2702,7 +2781,7 @@ function queueSharePdf() {
   const revision=++sharePdfRevision;
   sharePdfCache=null;
   clearTimeout(sharePdfTimer);
-  const enabled=state.items.length>0 && !layoutPlan().error && slots().length>0;
+  const enabled=state.items.length>0 && !layoutPlan().error && slots().length>0 && !tooLongCaptions().length;
   const canShareFiles = supportsFileSharing();
   $('savePdf').textContent = isIosDevice() ? 'Сохранить PDF' : 'Скачать PDF';
   $('sharePdf').disabled=!enabled || (canShareFiles && exportBusy);
@@ -2726,6 +2805,10 @@ function queueSharePdf() {
 }
 async function exportAction(mode) {
   if(exportBusy || !state.items.length) return;
+  if(tooLongCaptions().length) {
+    $('status').textContent=captionFitMessage(tooLongCaptions());
+    return;
+  }
   // iOS may open a downloaded blob: PDF as a web page. Sharing that page
   // from Safari/Telegram sends its unusable temporary URL, not the PDF.
   // Use a prepared File and the native share sheet for both Save and Share.
@@ -2797,7 +2880,7 @@ async function exportAction(mode) {
   } finally {
     exportBusy=false;
     controls.forEach(id=>{$(id).classList.remove('export-busy');});
-    setPrintEnabled(!layoutPlan().error && slots().length>0);
+    setPrintEnabled(!layoutPlan().error && slots().length>0 && !tooLongCaptions().length);
     syncPrimaryActions();
   }
 }
@@ -2920,6 +3003,34 @@ $('borderColor').addEventListener('input', () => {
 });
 $('showLabels').addEventListener('change', () => {
   state.showLabels = $('showLabels').checked;
+  renderOutput();
+});
+function syncCaptionSettings() {
+  $('captionFont').value=state.captionFont;
+  $('captionFontSample').style.fontFamily=captionFontFamily();
+  $('captionManual').checked=state.captionManual;
+  $('captionSize').disabled=!state.captionManual;
+  $('captionSize').value=String(state.captionPt);
+  $('captionSizeText').textContent=state.captionPt+' пт';
+  const metrics=captionLayout(layoutPlan());
+  $('captionSizeNotice').textContent=state.captionManual
+    ? (metrics.effectivePt + 0.5 < metrics.requestedPt
+      ? 'Для этой карточки шрифт уменьшен до '+Math.round(metrics.effectivePt)+' пт, иначе он не поместится по высоте.'
+      : 'Выбрано '+state.captionPt+' пт. Пространство для слова увеличивается автоматически.')
+    : 'Автоматический размер зависит от размера карточки.';
+}
+$('captionFont').addEventListener('change',()=>{
+  state.captionFont=$('captionFont').value;
+  renderOutput();
+});
+$('captionManual').addEventListener('change',()=>{
+  state.captionManual=$('captionManual').checked;
+  syncCaptionSettings();
+  renderOutput();
+});
+$('captionSize').addEventListener('input',()=>{
+  state.captionPt=Number($('captionSize').value);
+  syncCaptionSettings();
   renderOutput();
 });
 $('cutLines').addEventListener('change', () => {
