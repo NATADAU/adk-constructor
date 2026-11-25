@@ -515,6 +515,30 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .caption-settings > label.check { display: flex; }
 .caption-settings input[type="range"] { width: 100%; }
 .caption-font-sample { display: block; font-size: 23px; font-weight: 700; line-height: 1.35; color: #263238; background: white; border: 1px solid #d4dddd; border-radius: 8px; padding: 10px; overflow-wrap: anywhere; }
+/* Compact true-to-card preview for mobile settings: no separate fake text sample. */
+.mobile-caption-preview { display: none; }
+@media (max-width: 1024px) {
+  .app[data-pane="settings"] .mobile-caption-preview {
+    position: sticky; top: 8px; z-index: 9; display: flex;
+    flex-direction: column; align-items: center; gap: 5px;
+    background: #f2fafb; border: 1px solid #9fcdd2; border-radius: 12px;
+    padding: 8px 10px; margin: 6px 0 14px;
+    box-shadow: 0 3px 10px rgba(30,80,80,.10);
+  }
+  .mobile-caption-preview .mobile-card-preview-head {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; gap: 8px; font-size: 13px; font-weight: 700;
+  }
+  .mobile-caption-preview select { min-height: 40px; min-width: 0; width: 62%; }
+  .mobile-caption-preview-stage {
+    position: relative; width: 100%; max-width: 100%;
+    display: flex; justify-content: center; align-items: center;
+    height: 146px; overflow: hidden;
+  }
+  .mobile-caption-preview-stage .sheet-card { transform-origin: top left; pointer-events: none; }
+  .mobile-caption-preview-note { font-size: 11px; color: #526c70; margin: 0; text-align: center; }
+  .mobile-caption-preview .caption-warning { margin: 0; font-size: 12px; }
+}
 .cap {
   position: relative;
   z-index: 2;
@@ -692,6 +716,15 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
           </div>
         </div>
         <p id="matchingHelp" class="size-now" hidden>Назначьте каждой картинке сторону: слева или справа. Середина листа останется пустой, чтобы провести линии. Для удобства попробуйте альбомный лист.</p>
+        <div id="mobileCaptionPreview" class="mobile-caption-preview" aria-label="Предпросмотр настоящей карточки">
+          <div class="mobile-card-preview-head">
+            <span>Ваша карточка</span>
+            <select id="mobilePreviewChoice" class="control" aria-label="Выбрать карточку для просмотра" hidden></select>
+          </div>
+          <div id="mobilePreviewStage" class="mobile-caption-preview-stage"></div>
+          <p id="mobilePreviewNote" class="mobile-caption-preview-note">Изменения сразу видны здесь. На листе размер будет задан в сантиметрах.</p>
+          <p id="mobilePreviewWarning" class="caption-warning" hidden></p>
+        </div>
         <div class="settings-grid">
           <div>
             <span class="group-title" id="sizeTitle">Размер карточки</span>
@@ -1162,6 +1195,7 @@ function syncFormControls() {
 }
 function syncPane() {
   $('dropZone').dataset.pane = state.pane;
+  if (state.pane === 'settings') requestAnimationFrame(()=>renderMobileCardPreview());
   document.querySelectorAll('.mobile-nav .nav-btn').forEach(btn => {
     const active = btn.dataset.pane === state.pane;
     btn.classList.toggle('active',active);
@@ -1364,6 +1398,7 @@ function renderOutput() {
   syncCaptionSettings();
   const plan = layoutPlan();
   const key = structureKey(plan);
+  renderMobileCardPreview(plan);
   updateCaptionWarnings(plan);
   syncGalleryCropPreviews(plan);
   $('pageCss').textContent = '@page{size:' + plan.page.w + 'mm ' + plan.page.h + 'mm;margin:0;}';
@@ -1442,6 +1477,62 @@ function renderOutput() {
   });
   requestAnimationFrame(applyScale);
 }
+// Use the exact card renderer used by print/PDF preview, scaled only for the mobile UI.
+let mobilePreviewItemId = null;
+function renderMobileCardPreview(plan = layoutPlan()) {
+  const box=$('mobileCaptionPreview'), stage=$('mobilePreviewStage'), choice=$('mobilePreviewChoice');
+  if (!box) return;
+  // Avoid extra image decoding and DOM work in the desktop layout.
+  if (window.innerWidth > 1024 && state.pane !== 'settings') return;
+  const entries=slots();
+  if (!entries.length || plan.error) {
+    stage.replaceChildren();
+    const message=document.createElement('p');
+    message.className='size-now';
+    message.textContent=plan.error || 'Добавьте изображение, чтобы увидеть карточку.';
+    stage.append(message);
+    choice.hidden=true;
+    $('mobilePreviewWarning').hidden=true;
+    return;
+  }
+  const selected=entries.find(it=>it._sourceId===mobilePreviewItemId || it.id===mobilePreviewItemId) || entries[0];
+  mobilePreviewItemId=selected._sourceId || selected.id;
+  const unique=entries.filter((it,i)=>entries.findIndex(other=>(other._sourceId||other.id)===(it._sourceId||it.id))===i);
+  choice.hidden=unique.length<2;
+  if (!choice.hidden) {
+    choice.replaceChildren();
+    unique.forEach((it,i)=>{
+      const option=document.createElement('option');
+      option.value=it._sourceId||it.id;
+      option.textContent=(i+1)+'. '+(it.caption.trim()||'Без подписи');
+      choice.append(option);
+    });
+    choice.value=mobilePreviewItemId;
+  }
+  const mmToPx=96/25.4;
+  const cardW=plan.card.w*mmToPx,cardH=plan.card.h*mmToPx;
+  const availableW=Math.max(200,Math.min(stage.clientWidth||320,400)-12);
+  const scale=Math.min(availableW/cardW,138/cardH,1.25);
+  const outer=document.createElement('div');
+  outer.style.position='relative';
+  outer.style.flex='0 0 auto';
+  outer.style.width=(cardW*scale)+'px';
+  outer.style.height=(cardH*scale)+'px';
+  const card=buildCard(selected,plan,0,0);
+  card.style.transform='scale('+scale+')';
+  card.style.borderColor=state.border==='none'?'transparent':safeColor(state.borderColor);
+  outer.append(card);
+  stage.replaceChildren(outer);
+  const overflow=captionOverflows(selected,plan);
+  $('mobilePreviewWarning').hidden=!overflow;
+  $('mobilePreviewWarning').textContent=overflow
+    ? 'Слово не помещается. Увеличьте ширину карточки или уменьшите шрифт.'
+    : '';
+}
+$('mobilePreviewChoice').addEventListener('change',event=>{
+  mobilePreviewItemId=event.target.value;
+  renderMobileCardPreview();
+});
 function sheetWord(n) {
   const mod10 = n % 10;
   const mod100 = n % 100;
@@ -1488,12 +1579,32 @@ function syncSheetQuantity() {
   $('sheetInc').disabled = active.copies >= 30;
 }
 function setItemCopies(item, count) {
-  item.copies = normalizeCopies(count);
-  if (item.copyOverrides) {
-    for (const key of Object.keys(item.copyOverrides)) {
-      if (Number(key) >= item.copies) delete item.copyOverrides[key];
+  const previous=normalizeCopies(item.copies);
+  const next=normalizeCopies(count);
+  // When adding copies, duplicate the latest card edited on the sheet
+  // (including its crop and custom caption), rather than the unedited source.
+  if (next > previous && Number.isInteger(item.copyTemplateIndex)
+      && item.copyTemplateIndex >= 0 && item.copyTemplateIndex < previous) {
+    const template=item.copyOverrides?.[item.copyTemplateIndex];
+    if (template) {
+      if (!item.copyOverrides) item.copyOverrides={};
+      for (let i=previous;i<next;i++) {
+        item.copyOverrides[i]={
+          ...(template.crop ? {crop:{...template.crop}} : {}),
+          ...(Object.prototype.hasOwnProperty.call(template,'caption')
+            ? {caption:template.caption} : {})
+        };
+      }
     }
   }
+  item.copies=next;
+  if (item.copyOverrides) {
+    for (const key of Object.keys(item.copyOverrides)) {
+      if (Number(key) >= next) delete item.copyOverrides[key];
+    }
+  }
+  if (Number.isInteger(item.copyTemplateIndex) && item.copyTemplateIndex >= next)
+    delete item.copyTemplateIndex;
 }
 function updateSheetCopies(value) {
   const item = selectedSheetItem();
@@ -2105,10 +2216,13 @@ $('cropApply').addEventListener('click', () => {
         if ($('cropCaption').value !== source.caption)
           override.caption = $('cropCaption').value;
         source.copyOverrides[editingCopy.copyIndex] = override;
+        source.copyTemplateIndex=editingCopy.copyIndex;
       }
     } else {
       cropItem.crop = {...cropDraft};
       updateSourceCaption(cropItem, $('cropCaption').value);
+      // A fresh edit to the source becomes the template for subsequent copies.
+      delete cropItem.copyTemplateIndex;
     }
     if ($('cropCaption').value.trim() && !state.showLabels) {
       state.showLabels = true; $('showLabels').checked = true;
