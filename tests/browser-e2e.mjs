@@ -1102,6 +1102,52 @@ try {
     assert.ok(result.message.includes('Сохраните картинку'),JSON.stringify(result));
     await page.locator('#compositeCancel').click();
   });
+  await test('Manual large Cyrillic labels resize image area and work for ordinary and composite cards',async()=>{
+    const result=await page.evaluate(async()=>{
+      const saved={captionFont:state.captionFont,captionManual:state.captionManual,captionPt:state.captionPt,
+        sizeMode:state.sizeMode,showLabels:state.showLabels};
+      try {
+        state.sizeMode='70';state.showLabels=true;state.captionFont='candara';state.captionManual=true;state.captionPt=72;
+        syncCaptionSettings();renderOutput();
+        const plan=layoutPlan();
+        const metrics=captionLayout(plan);
+        const card=[...document.querySelectorAll('#printRoot .sheet-card')]
+          .find(el=>el.querySelector('.composite-parts'));
+        const font=card?.querySelector('.cap')?.style.fontFamily;
+        const cssSize=card?.querySelector('.cap')?.style.fontSize;
+        const width=exportCropArea(plan,{caption:'ЛАМПА'},0,0).w;
+        const imageHeight=exportCropArea(plan,{caption:'ЛАМПА'},0,0).h;
+        const pdf=await buildPdfFile();const png=await buildPngFile();
+        state.captionFont='cambria';renderOutput();
+        const cambria=document.querySelector('#printRoot .cap')?.style.fontFamily;
+        return {requested:metrics.requestedPt,effective:metrics.effectivePt,band:metrics.height,
+          font,cssSize,imageHeight,width,pdf:pdf.type,png:png.type,cambria};
+      } finally {Object.assign(state,saved);syncCaptionSettings();renderOutput();}
+    });
+    assert.equal(result.requested,72,JSON.stringify(result));
+    assert.equal(result.effective,72,JSON.stringify(result));
+    assert.ok(result.band>35,JSON.stringify(result));
+    assert.ok(result.imageHeight<35,JSON.stringify(result));
+    assert.ok(result.font?.includes('Candara'),JSON.stringify(result));
+    assert.ok(result.cambria?.includes('Cambria'),JSON.stringify(result));
+    assert.equal(result.pdf,'application/pdf');
+    assert.equal(result.png,'image/png');
+  });
+  await test('Tiny card reduces oversize point size without clipping into image',async()=>{
+    const result=await page.evaluate(()=>{
+      const saved={sizeMode:state.sizeMode,captionManual:state.captionManual,captionPt:state.captionPt};
+      try {
+        state.sizeMode='30';state.captionManual=true;state.captionPt=72;
+        syncCaptionSettings();
+        const metrics=captionLayout(layoutPlan());
+        return {font:metrics.font,band:metrics.height,requested:metrics.requestedPt,
+          effective:metrics.effectivePt,notice:$('captionSizeNotice').textContent};
+      } finally {Object.assign(state,saved);syncCaptionSettings();}
+    });
+    assert.ok(result.effective<72,JSON.stringify(result));
+    assert.ok(result.band<30,JSON.stringify(result));
+    assert.ok(result.notice.includes('уменьшен'),JSON.stringify(result));
+  });
   await test('Large 7x7 and 10x10 cm cards use large readable typography',async()=>{
     const result=await page.evaluate(()=>{
       const previous=state.sizeMode,values=[];
