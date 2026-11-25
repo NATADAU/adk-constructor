@@ -514,6 +514,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
 .caption-settings > label { display: grid; gap: 4px; }
 .caption-settings > label.check { display: flex; }
 .caption-settings input[type="range"] { width: 100%; }
+.caption-font-sample { display: block; font-size: 23px; font-weight: 700; line-height: 1.35; color: #263238; background: white; border: 1px solid #d4dddd; border-radius: 8px; padding: 10px; overflow-wrap: anywhere; }
 .cap {
   position: relative;
   z-index: 2;
@@ -731,6 +732,7 @@ input[type="color"].control { width: 64px; padding: 4px; min-height: var(--touch
                   <option value="georgia">Georgia</option>
                 </select>
               </label>
+              <span id="captionFontSample" class="caption-font-sample" aria-label="Образец букв выбранного шрифта">ЛАМПА · ПИЛА · ЛОПАТА</span>
               <label class="check"><input id="captionManual" type="checkbox"> Настроить размер шрифта вручную</label>
               <label id="captionSizeRow">Размер шрифта: <output id="captionSizeText">40 пт</output>
                 <input id="captionSize" type="range" min="12" max="72" value="40" step="2" disabled>
@@ -2971,6 +2973,7 @@ $('showLabels').addEventListener('change', () => {
 });
 function syncCaptionSettings() {
   $('captionFont').value=state.captionFont;
+  $('captionFontSample').style.fontFamily=captionFontFamily();
   $('captionManual').checked=state.captionManual;
   $('captionSize').disabled=!state.captionManual;
   $('captionSize').value=String(state.captionPt);
